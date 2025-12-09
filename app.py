@@ -79,7 +79,7 @@ authenticator = stauth.Authenticate(
 # ---- UI / Login ----
 def show_login():
     st.markdown("<h1 style='text-align:center;'>🔐 Household Survey Dashboard</h1>", unsafe_allow_html=True)
-    name, authentication_status, username, _, _ = authenticator.login(
+    name, authentication_status, username = authenticator.login(location="main")
         location="main",
         fields={
             "Form name": "Login",
