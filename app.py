@@ -79,11 +79,10 @@ authenticator = stauth.Authenticate(
 # ---- UI / Login ----
 def show_login():
     st.markdown("<h1 style='text-align:center;'>🔐 Household Survey Dashboard</h1>", unsafe_allow_html=True)
-    # NEW API: location first, then fields for customization
     name, auth_status, username = authenticator.login(
-        location="main",  # ← Explicitly set location
-        fields={  # ← Replaces old 'form_name'; customize labels if needed
-            "Form name": "Login",  # ← This was your old "Login" parameter
+        location="main",
+        fields={
+            "Form name": "Login",
             "Username": "Username",
             "Password": "Password",
             "Login": "Login"
@@ -96,7 +95,7 @@ def show_login():
     if auth_status is None:
         st.warning("Please enter your username and password")
         return False, None
-    # auth_status == True
+    
     return True, {"name": name, "username": username}
 
 # ---- Main app ----
