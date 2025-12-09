@@ -34,8 +34,7 @@ if not config_path.exists():
 
     # Hash the password using streamlit_authenticator Hasher
     # Hasher takes a list of plain passwords and returns a list of hashed passwords
-    hashed_list = stauth.Hasher([str(admin_password)]).generate()
-    hashed_pw = hashed_list[0]
+    hashed_passwords = stauth.Hasher.hash_passwords([admin_password])
 
     credentials = {
         "usernames": {
