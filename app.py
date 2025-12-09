@@ -5,6 +5,13 @@ import yaml
 from yaml.loader import SafeLoader
 import os
 from pathlib import Path
+# Import dashboard here to make it available for the main function
+try:
+    from dashboard import main as dashboard_main
+except ModuleNotFoundError:
+    # If dashboard.py doesn't exist yet, this will catch it later in main()
+    dashboard_main = None
+
 
 # Page configuration
 st.set_page_config(
@@ -13,6 +20,8 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="collapsed"
 )
+
+# --- Configuration Setup (No changes needed here) ---
 
 # Create config directory if it doesn't exist
 config_dir = Path("./config")
@@ -73,69 +82,58 @@ authenticator = stauth.Authenticate(
     cookie_name=config["cookie"]["name"],
     key=config["cookie"]["key"],
     cookie_expiry_days=config["cookie"]["expiry_days"],
-    preauthorized=config["preauthorized"]["emails"]  # ← Flat list for new API
+    preauthorized=config["preauthorized"]["emails"]
 )
 
-# ---- UI / Login ----
+# --- CORRECTED Login and Main Functions using Session State ---
+
 def show_login():
+    """Handles the login form display and state update via session_state."""
     st.markdown("<h1 style='text-align:center;'>🔐 Household Survey Dashboard</h1>", unsafe_allow_html=True)
     
-    # Initialize variables for the try/except block
-    name = None
-    authentication_status = None
-    username = None
-
-    # Use a try/except block to handle the TypeError when the login function
-    # only returns 2 values (on initial load or failed login in some versions)
-    try:
-        # Tries to unpack 3 values (Success or certain failed states)
-        name, authentication_status, username = authenticator.login(location="main")
-    except TypeError:
-        # If the library returns only 2 values (common on initial load),
-        # we catch the error, and the variables remain as None, which is fine
-        # because the logic below handles the None status.
-        # Rerun the login call to ensure the UI is displayed, but only unpack 2 values
-        # NOTE: This approach is slightly cleaner than relying on global state/st.session_state
-        # for a simple login screen.
-        pass
-
-    # The login widget is displayed if authentication_status is None
-    if authentication_status is False:
-        st.error("Username/password is incorrect")
-        return False, None
-    if authentication_status is None:
-        # This state occurs on initial load or if the user hasn't interacted yet.
-        # The login form is visible.
-        return False, None
+    # Call the login function. This displays the form and updates st.session_state
+    # with keys: 'authentication_status', 'name', and 'username'.
+    authenticator.login(location="main")
     
-    # If authentication_status is True (Success)
-    return True, {"name": name, "username": username}
+    # Check the status written to session_state
+    if st.session_state["authentication_status"] is False:
+        st.error("Username/password is incorrect")
+    elif st.session_state["authentication_status"] is None:
+        st.warning("Please enter your username and password")
+    
+    # Note: We don't return anything here. The main function will check st.session_state directly.
 
 # ---- Main app ----
 def main():
-    # If logged in show dashboard, else show login
-    logged_in, user = show_login()
-    if not logged_in:
-        return
+    # 1. Run the login process to display the form and update session state
+    show_login()
     
-    # Sidebar with logout and info
-    with st.sidebar:
-        st.markdown(f"### Welcome *{user['name']}*")
-        # FIXED: Keyword args for new API
-        authenticator.logout(button_name="Logout", location="sidebar")
-        st.markdown("---")
-        if st.button("Refresh Data"):
-            st.rerun()  # FIXED: experimental_rerun() → rerun()
-    
-    # Run the dashboard (imported from dashboard.py)
-    try:
-        from dashboard import main as dashboard_main
-        dashboard_main()
-    except ModuleNotFoundError:
-        st.error("dashboard.py not found. Create dashboard.py in the same folder.")
-    except Exception as e:
-        st.error(f"Error while loading dashboard: {e}")
-        st.exception(e)
+    # 2. Check the authentication status in session state
+    if st.session_state.get("authentication_status"):
+        # This block runs ONLY if login was successful (authentication_status is True)
+        
+        # Sidebar with logout and info
+        with st.sidebar:
+            # Access user info directly from session state
+            st.markdown(f"### Welcome *{st.session_state['name']}*")
+            # Log out button (will set authentication_status to False and RERUN)
+            authenticator.logout(button_name="Logout", location="sidebar")
+            st.markdown("---")
+            if st.button("Refresh Data"):
+                st.rerun()
+        
+        # Run the dashboard (imported from dashboard.py)
+        if dashboard_main:
+            try:
+                dashboard_main()
+            except Exception as e:
+                st.error(f"Error while loading dashboard: {e}")
+                st.exception(e)
+        else:
+            st.error("dashboard.py not found. Create dashboard.py in the same folder.")
+
+    # else: If authentication_status is False or None, the dashboard part is skipped, 
+    # and only the login form (displayed in show_login) is shown.
 
 if __name__ == "__main__":
     main()
