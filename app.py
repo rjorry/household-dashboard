@@ -31,23 +31,24 @@ if not config_path.exists():
     except Exception as e:
         st.error("Missing auth secrets. Create .streamlit/secrets.toml with [auth] username, email, password.")
         st.stop()
-
-    # Hash the password using streamlit_authenticator Hasher
-    # Hasher takes a list of plain passwords and returns a list of hashed passwords
-    hashed_passwords = stauth.Hasher.hash_passwords([admin_password])
-
+    
+    # Build credentials with PLAIN password first
     credentials = {
         "usernames": {
             admin_username: {
                 "name": "Admin User",
                 "email": admin_email,
-                "password": hashed_pw
+                "password": admin_password  # ← Plain text here (safe, since it's local/secrets only)
             }
         }
     }
-
+    
+    # NOW hash the password in-place using the full credentials dict
+    stauth.Hasher.hash_passwords(credentials)
+    # → Hashes credentials["usernames"][admin_username]["password"] securely
+    
     default_config = {
-        "credentials": credentials,
+        "credentials": credentials,  # ← Now contains the HASHED password
         "cookie": {
             "expiry_days": 1,
             "key": "household_dashboard_auth_key",  # you can change this to any random string
