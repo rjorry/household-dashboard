@@ -54,12 +54,22 @@ def main():
     st.sidebar.markdown("**Ronny Jorry**  \nEmail: ronnyjorry@gmail.com")
 
     # DB CONNECTION
-    try:
-        engine = create_engine("postgresql://postgres:rj77megs!!@localhost:5432/chess_hdss_25")
-        hh_df, ind_df = load_data(engine)
-    except Exception as e:
-        st.error(f"Database connection failed: {e}")
-        st.stop()
+try:
+    # 1. Retrieve the secure connection string from Streamlit secrets
+    supabase_url = st.secrets["connections"]["SUPABASE_URL"]
+    
+    # 2. Use the full URL string to create the SQLAlchemy engine
+    engine = create_engine(supabase_url) 
+    
+    # 3. Proceed to load data
+    hh_df, ind_df = load_data(engine)
+except KeyError:
+    st.error("Configuration error: 'SUPABASE_URL' is missing in the [connections] section of .streamlit/secrets.toml.")
+    st.stop()
+except Exception as e:
+    # This will catch any connection errors (e.g., wrong password, host issues)
+    st.error(f"Database connection failed: {e}")
+    st.stop()
 
     # SITE LIST
     sites = ['central', 'east_new_britian', 'eastern_highlands', 'ncd', 'east_sepik']
