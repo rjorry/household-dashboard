@@ -105,7 +105,7 @@ def main():
 
     # Your actual dashboard
     try:
-        from dashboard = __import__("dashboard")
+        from dashboard import main as dashboard_main
         dashboard.main()
     except ImportError:
         st.error("dashboard.py not found in the project root")
