@@ -31,7 +31,7 @@ if not config_path.exists():
     except Exception as e:
         st.error("Missing auth secrets. Create .streamlit/secrets.toml with [auth] username, email, password.")
         st.stop()
-    
+
     # Build credentials with PLAIN password first
     credentials = {
         "usernames": {
@@ -42,11 +42,11 @@ if not config_path.exists():
             }
         }
     }
-    
+
     # NOW hash the password in-place using the full credentials dict
     stauth.Hasher.hash_passwords(credentials)
     # → Hashes credentials["usernames"][admin_username]["password"] securely
-    
+
     default_config = {
         "credentials": credentials,  # ← Now contains the HASHED password
         "cookie": {
