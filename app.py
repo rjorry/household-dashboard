@@ -30,7 +30,18 @@ except:
 
 # ---- ALWAYS RECREATE CONFIG ----
 # (Prevents corrupted YAML on Streamlit Cloud)
-hashed_pw = stauth.Hasher([admin_password]).generate()[0]
+# DEBUGGING: show type and repr
+st.write("DEBUG password repr:", repr(admin_password))
+st.write("DEBUG password type:", type(admin_password))
+
+# Remove spaces, newlines, weird invisible characters
+clean_pw = str(admin_password).strip()
+
+# Replace any unicode with ASCII fallback
+clean_pw = clean_pw.encode("ascii", "ignore").decode()
+
+hashed_pw = stauth.Hasher([clean_pw]).generate()[0]
+
 
 credentials = {
     "usernames": {
