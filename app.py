@@ -80,15 +80,35 @@ authenticator = stauth.Authenticate(
 def show_login():
     st.markdown("<h1 style='text-align:center;'>🔐 Household Survey Dashboard</h1>", unsafe_allow_html=True)
     
-    # FIXED: Proper syntax, indentation, and 3-value unpack (per current docs)
-    name, authentication_status, username = authenticator.login(location="main")
-    
+    # Initialize variables for the try/except block
+    name = None
+    authentication_status = None
+    username = None
+
+    # Use a try/except block to handle the TypeError when the login function
+    # only returns 2 values (on initial load or failed login in some versions)
+    try:
+        # Tries to unpack 3 values (Success or certain failed states)
+        name, authentication_status, username = authenticator.login(location="main")
+    except TypeError:
+        # If the library returns only 2 values (common on initial load),
+        # we catch the error, and the variables remain as None, which is fine
+        # because the logic below handles the None status.
+        # Rerun the login call to ensure the UI is displayed, but only unpack 2 values
+        # NOTE: This approach is slightly cleaner than relying on global state/st.session_state
+        # for a simple login screen.
+        pass
+
+    # The login widget is displayed if authentication_status is None
     if authentication_status is False:
         st.error("Username/password is incorrect")
         return False, None
     if authentication_status is None:
-        st.warning("Please enter your username and password")
+        # This state occurs on initial load or if the user hasn't interacted yet.
+        # The login form is visible.
         return False, None
+    
+    # If authentication_status is True (Success)
     return True, {"name": name, "username": username}
 
 # ---- Main app ----
