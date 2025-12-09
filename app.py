@@ -54,7 +54,7 @@ if not config_path.exists():
             "key": "household_dashboard_auth_key",  # you can change this to any random string
             "name": "household_dashboard_cookie"
         },
-        "preauthorized": {  # ← Dict structure for YAML, but we'll flatten when using
+        "preauthorized": {
             "emails": [admin_email]
         }
     }
@@ -67,29 +67,21 @@ if not config_path.exists():
 with open(config_path) as file:
     config = yaml.load(file, Loader=SafeLoader)
 
-# Initialize authenticator (FIX: Flatten preauthorized to list for new API)
+# Initialize authenticator
 authenticator = stauth.Authenticate(
     credentials=config["credentials"],
     cookie_name=config["cookie"]["name"],
     key=config["cookie"]["key"],
     cookie_expiry_days=config["cookie"]["expiry_days"],
-    preauthorized=config["preauthorized"]["emails"]  # ← FIXED: Direct list of emails
+    preauthorized=config["preauthorized"]["emails"]  # ← Flat list for new API
 )
 
 # ---- UI / Login ----
 def show_login():
     st.markdown("<h1 style='text-align:center;'>🔐 Household Survey Dashboard</h1>", unsafe_allow_html=True)
     
-    # FIXED: Unpack 5 values (new API returns name, status, username, email, token)
-    name, authentication_status, username, _, _ = authenticator.login(
-        location="main",
-        fields={
-            "Form name": "Login",
-            "Username": "Username",
-            "Password": "Password",
-            "Login": "Login"
-        }
-    )
+    # FIXED: Proper syntax, indentation, and 3-value unpack (per current docs)
+    name, authentication_status, username = authenticator.login(location="main")
     
     if authentication_status is False:
         st.error("Username/password is incorrect")
@@ -109,7 +101,7 @@ def main():
     # Sidebar with logout and info
     with st.sidebar:
         st.markdown(f"### Welcome *{user['name']}*")
-        # FIXED: New API for logout (keywords for clarity)
+        # FIXED: Keyword args for new API
         authenticator.logout(button_name="Logout", location="sidebar")
         st.markdown("---")
         if st.button("Refresh Data"):
