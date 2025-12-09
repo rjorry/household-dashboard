@@ -5,6 +5,17 @@ import yaml
 from yaml.loader import SafeLoader
 import os
 from pathlib import Path
+import shutil
+
+config_dir = Path("./config")
+config_path = config_dir / "config.yaml"
+
+# Force delete old corrupted config file
+if config_path.exists():
+    try:
+        config_path.unlink()  # delete file
+    except:
+        pass
 
 # Page configuration
 st.set_page_config(
