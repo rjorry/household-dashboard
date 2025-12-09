@@ -9,7 +9,7 @@ from pathlib import Path
 # Page configuration
 st.set_page_config(
     page_title="Household Survey Dashboard",
-    page_icon="key",
+    page_icon="🔐",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
@@ -17,62 +17,79 @@ st.set_page_config(
 # Create config directory if it doesn't exist
 config_dir = Path("./config")
 os.makedirs(config_dir, exist_ok=True)
+
+# Path to config file (will store hashed password)
 config_path = config_dir / "config.yaml"
 
-# Create config.yaml with hashed password (only first time)
+# If config doesn't exist, create it using secrets (secrets hold the plain password locally)
 if not config_path.exists():
+    # Read credentials from Streamlit secrets (keep secrets.toml local and ignored by git)
     try:
         admin_username = st.secrets["auth"]["username"]
-        admin_email    = st.secrets["auth"]["email"]
+        admin_email = st.secrets["auth"]["email"]
         admin_password = st.secrets["auth"]["password"]
-    except Exception:
-        st.error("Missing auth secrets in .streamlit/secrets.toml")
+    except Exception as e:
+        st.error("Missing auth secrets. Create .streamlit/secrets.toml with [auth] username, email, password.")
         st.stop()
-
+    
+    # Build credentials with PLAIN password first
     credentials = {
         "usernames": {
             admin_username: {
                 "name": "Admin User",
                 "email": admin_email,
-                "password": admin_password
+                "password": admin_password  # ← Plain text here (safe, since it's local/secrets only)
             }
         }
     }
-
-    stauth.Hasher.hash_passwords(credentials)  # hashes in-place
-
+    
+    # NOW hash the password in-place using the full credentials dict
+    stauth.Hasher.hash_passwords(credentials)
+    # → Hashes credentials["usernames"][admin_username]["password"] securely
+    
     default_config = {
-        "credentials": credentials,
+        "credentials": credentials,  # ← Now contains the HASHED password
         "cookie": {
-            "expiry_days": 30,
-            "key": "household_dashboard_auth_key_2025",
+            "expiry_days": 1,
+            "key": "household_dashboard_auth_key",  # you can change this to any random string
             "name": "household_dashboard_cookie"
         },
-        "preauthorized": {"emails": [admin_email]}
+        "preauthorized": {  # ← Dict structure for YAML, but we'll flatten when using
+            "emails": [admin_email]
+        }
     }
-
+    
+    # Save hashed credentials to config.yaml (this file contains only hashed password)
     with open(config_path, "w") as fh:
         yaml.dump(default_config, fh, sort_keys=False)
 
-# Load config
+# Load configuration (the file contains hashed password)
 with open(config_path) as file:
     config = yaml.load(file, Loader=SafeLoader)
 
-# Initialize authenticator
+# Initialize authenticator (FIX: Flatten preauthorized to list for new API)
 authenticator = stauth.Authenticate(
-    config["credentials"],
-    config["cookie"]["name"],
-    config["cookie"]["key"],
-    config["cookie"]["expiry_days"],
-    config.get("preauthorized")
+    credentials=config["credentials"],
+    cookie_name=config["cookie"]["name"],
+    key=config["cookie"]["key"],
+    cookie_expiry_days=config["cookie"]["expiry_days"],
+    preauthorized=config["preauthorized"]["emails"]  # ← FIXED: Direct list of emails
 )
 
-# ---- FIXED LOGIN FUNCTION (this is the key change) ----
+# ---- UI / Login ----
 def show_login():
-    st.markdown("<h1 style='text-align:center;'>Household Survey Dashboard</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align:center;'>🔐 Household Survey Dashboard</h1>", unsafe_allow_html=True)
     
-    # This line works perfectly with streamlit-authenticator 0.4.x in 2025
-    name, authentication_status, username, _, _ = authenticator.login(location="main")
+    # FIXED: Unpack 5 values (new API returns name, status, username, email, token)
+    name, authentication_status, username, _, _ = authenticator.login(
+        location="main",
+        fields={
+            "Form name": "Login",
+            "Username": "Username",
+            "Password": "Password",
+            "Login": "Login"
+        }
+    )
     
     if authentication_status is False:
         st.error("Username/password is incorrect")
@@ -80,29 +97,32 @@ def show_login():
     if authentication_status is None:
         st.warning("Please enter your username and password")
         return False, None
-    
     return True, {"name": name, "username": username}
 
 # ---- Main app ----
 def main():
+    # If logged in show dashboard, else show login
     logged_in, user = show_login()
     if not logged_in:
         return
-
+    
+    # Sidebar with logout and info
     with st.sidebar:
         st.markdown(f"### Welcome *{user['name']}*")
-        authenticator.logout("Logout", "sidebar")
+        # FIXED: New API for logout (keywords for clarity)
+        authenticator.logout(button_name="Logout", location="sidebar")
         st.markdown("---")
         if st.button("Refresh Data"):
-            st.rerun()
-
+            st.rerun()  # FIXED: experimental_rerun() → rerun()
+    
+    # Run the dashboard (imported from dashboard.py)
     try:
         from dashboard import main as dashboard_main
         dashboard_main()
     except ModuleNotFoundError:
-        st.error("dashboard.py not found. Create it in the same folder.")
+        st.error("dashboard.py not found. Create dashboard.py in the same folder.")
     except Exception as e:
-        st.error(f"Error loading dashboard: {e}")
+        st.error(f"Error while loading dashboard: {e}")
         st.exception(e)
 
 if __name__ == "__main__":
