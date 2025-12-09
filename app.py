@@ -3,122 +3,126 @@ import streamlit as st
 import streamlit_authenticator as stauth
 import yaml
 from yaml.loader import SafeLoader
-from pathlib import Path
 import os
+from pathlib import Path
 
-# ---- PAGE CONFIG ----
+# Page configuration
 st.set_page_config(
     page_title="Household Survey Dashboard",
     page_icon="🔐",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="collapsed"
 )
 
-# ---- CONFIG FOLDER ----
+# Create config directory if it doesn't exist
 config_dir = Path("./config")
-config_dir.mkdir(exist_ok=True)
+os.makedirs(config_dir, exist_ok=True)
 
+# Path to config file (will store hashed password)
 config_path = config_dir / "config.yaml"
 
-# ---- READ SECRETS (Required) ----
-try:
-    admin_username = st.secrets["auth"]["username"]
-    admin_email = st.secrets["auth"]["email"]
-    admin_password = st.secrets["auth"]["password"]
-except:
-    st.error("❌ Missing secrets! Add them in Streamlit Cloud → Settings → Secrets")
-    st.stop()
-
-# ---- ALWAYS RECREATE CONFIG ----
-# (Prevents corrupted YAML on Streamlit Cloud)
-# DEBUGGING: show type and repr
-st.write("DEBUG password repr:", repr(admin_password))
-st.write("DEBUG password type:", type(admin_password))
-
-# Remove spaces, newlines, weird invisible characters
-clean_pw = str(admin_password).strip()
-
-# Replace any unicode with ASCII fallback
-clean_pw = clean_pw.encode("ascii", "ignore").decode()
-
-hashed_pw = stauth.Hasher([clean_pw]).generate()[0]
-
-
-credentials = {
-    "usernames": {
-        admin_username: {
-            "email": admin_email,
-            "name": "Admin",
-            "password": hashed_pw
+# If config doesn't exist, create it using secrets (secrets hold the plain password locally)
+if not config_path.exists():
+    # Read credentials from Streamlit secrets (keep secrets.toml local and ignored by git)
+    try:
+        admin_username = st.secrets["auth"]["username"]
+        admin_email = st.secrets["auth"]["email"]
+        admin_password = st.secrets["auth"]["password"]
+    except Exception as e:
+        st.error("Missing auth secrets. Create .streamlit/secrets.toml with [auth] username, email, password.")
+        st.stop()
+    
+    # Build credentials with PLAIN password first
+    credentials = {
+        "usernames": {
+            admin_username: {
+                "name": "Admin User",
+                "email": admin_email,
+                "password": admin_password  # ← Plain text here (safe, since it's local/secrets only)
+            }
         }
     }
-}
-
-config_data = {
-    "credentials": credentials,
-    "cookie": {
-        "expiry_days": 1,
-        "key": "some_signature_key",
-        "name": "auth_cookie"
-    },
-    "preauthorized": {
-        "emails": [admin_email]
+    
+    # NOW hash the password in-place using the full credentials dict
+    stauth.Hasher.hash_passwords(credentials)
+    # → Hashes credentials["usernames"][admin_username]["password"] securely
+    
+    default_config = {
+        "credentials": credentials,  # ← Now contains the HASHED password
+        "cookie": {
+            "expiry_days": 1,
+            "key": "household_dashboard_auth_key",  # you can change this to any random string
+            "name": "household_dashboard_cookie"
+        },
+        "preauthorized": {
+            "emails": [admin_email]
+        }
     }
-}
 
-with open(config_path, "w") as f:
-    yaml.dump(config_data, f, sort_keys=False)
+    # Save hashed credentials to config.yaml (this file contains only hashed password)
+    with open(config_path, "w") as fh:
+        yaml.dump(default_config, fh, sort_keys=False)
 
-# ---- LOAD CLEAN CONFIG ----
-with open(config_path) as f:
-    config = yaml.load(f, Loader=SafeLoader)
+# Load configuration (the file contains hashed password)
+with open(config_path) as file:
+    config = yaml.load(file, Loader=SafeLoader)
 
-# ---- AUTHENTICATOR ----
+# Initialize authenticator
 authenticator = stauth.Authenticate(
     credentials=config["credentials"],
     cookie_name=config["cookie"]["name"],
     key=config["cookie"]["key"],
     cookie_expiry_days=config["cookie"]["expiry_days"],
-    preauthorized=config["preauthorized"]
+    preauthorized=config.get("preauthorized")
 )
 
-# ---- LOGIN UI ----
-def login_screen():
-    st.title("🔐 Household Survey Dashboard")
-
-    name, auth_status, username = authenticator.login("Login", "main")
-
+# ---- UI / Login ----
+def show_login():
+    st.markdown("<h1 style='text-align:center;'>🔐 Household Survey Dashboard</h1>", unsafe_allow_html=True)
+    name, auth_status, username = authenticator.login(
+        location="main",
+        fields={
+            "Form name": "Login",
+            "Username": "Username",
+            "Password": "Password",
+            "Login": "Login"
+        }
+    )
+    
     if auth_status is False:
-        st.error("❌ Incorrect username or password")
-        return None
-
+        st.error("Username/password is incorrect")
+        return False, None
     if auth_status is None:
-        st.warning("Enter login credentials")
-        return None
+        st.warning("Please enter your username and password")
+        return False, None
+    
+    return True, {"name": name, "username": username}
 
-    return name, username
-
-
-# ---- MAIN ----
+# ---- Main app ----
 def main():
-    auth = login_screen()
-    if not auth:
+    # If logged in show dashboard, else show login
+    logged_in, user = show_login()
+
+    if not logged_in:
         return
 
-    name, username = auth
-
-    # SIDEBAR
+    # Sidebar with logout and info
     with st.sidebar:
-        st.success(f"Logged in as {name}")
+        st.markdown(f"### Welcome *{user['name']}*")
         authenticator.logout("Logout", "sidebar")
+        st.markdown("---")
+        if st.button("Refresh Data"):
+            st.experimental_rerun()
 
-    # DASHBOARD
+    # Run the dashboard (imported from dashboard.py)
     try:
         from dashboard import main as dashboard_main
         dashboard_main()
+    except ModuleNotFoundError:
+        st.error("dashboard.py not found. Create dashboard.py in the same folder.")
     except Exception as e:
-        st.error(f"Dashboard Error: {e}")
+        st.error(f"Error while loading dashboard: {e}")
         st.exception(e)
-
 
 if __name__ == "__main__":
     main()
