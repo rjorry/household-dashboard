@@ -543,8 +543,9 @@ def main():
             st.error(f"Error in data quality section: {e}")
             st.exception(e)
 
-    # ==================== TAB: Report ====================
+     # ==================== TAB: Report ====================
     with tab_report:
+        # Form 1A - Daily Tally Report
         st.markdown(f"# Form 1A – DSP Household Demography Survey")
         st.markdown(f"## Daily Tally Report | {selected_site.replace('_', ' ').title()} | {datetime.now().strftime('%d %B %Y %H:%M')}")
         
@@ -579,14 +580,10 @@ def main():
             daily_tally_df = pd.read_sql(daily_tally_query, engine, params=(selected_site,))
             
             if not daily_tally_df.empty:
-                # Display the table with proper formatting
                 st.dataframe(
                     daily_tally_df,
                     column_config={
-                        "collection_date": st.column_config.DateColumn(
-                            "Collection Date",
-                            format="DD/MM/YYYY"
-                        ),
+                        "collection_date": st.column_config.DateColumn("Collection Date", format="DD/MM/YYYY"),
                         "data_collector": "Data Collector",
                         "village_name": "Village Name",
                         "completed": "Completed",
@@ -601,7 +598,7 @@ def main():
                     use_container_width=True
                 )
                 
-                # Add download button for the data
+                # Download button for daily tally
                 csv = daily_tally_df.to_csv(index=False).encode('utf-8')
                 st.download_button(
                     label="Download Daily Tally Report (CSV)",
@@ -609,30 +606,6 @@ def main():
                     file_name=f"daily_tally_report_{selected_site.lower()}.csv",
                     mime="text/csv"
                 )
-                
-                # Display summary statistics
-                st.markdown("### Summary Statistics")
-                
-                # Calculate totals
-                total_completed = daily_tally_df['completed'].sum()
-                total_refused = daily_tally_df['refused'].sum()
-                total_other = daily_tally_df['other'].sum()
-                total_dont_know = daily_tally_df['dont_know'].sum()
-                total_interviews = daily_tally_df['total_interviews'].sum()
-                
-                # Display in columns
-                col1, col2, col3, col4, col5 = st.columns(5)
-                with col1:
-                    st.metric("Total Completed", f"{total_completed:,}")
-                with col2:
-                    st.metric("Total Refused", f"{total_refused:,}")
-                with col3:
-                    st.metric("Total Other", f"{total_other:,}")
-                with col4:
-                    st.metric("Total Don't Know", f"{total_dont_know:,}")
-                with col5:
-                    st.metric("Total Interviews", f"{total_interviews:,}")
-                
             else:
                 st.info("No interview data available for the selected site.")
                 
@@ -640,6 +613,350 @@ def main():
             st.error(f"Error generating daily tally report: {e}")
             st.exception(e)
 
+        st.markdown("---")
+        
+        # Form 1B - Progressive Monthly Tally
+        st.markdown("## Form 1B – DSP Household Demography Survey")
+        st.markdown("### Progressive Monthly Tally")
+        
+        try:
+            # Monthly tally query with monthly breakdown
+            monthly_tally_query = """
+            WITH monthly_sector_data AS (
+                SELECT
+                    DATE_TRUNC('month', TO_DATE(SUBSTRING(h.interview_date_time_1, 1, 10), 'YYYY-MM-DD')) AS month,
+                    h.sector,
+                    h.four_1_1 AS interview_result,
+                    COUNT(DISTINCT h.key) AS households,
+                    COUNT(i.key) AS population
+                FROM households h
+                LEFT JOIN individuals i ON i.parent_key = h.key
+                WHERE h.pro_name = %s
+                AND h.interview_date_time_1 ~ '^\\d{4}-\\d{2}-\\d{2}'
+                AND h.four_1_1 = 1  -- Only completed interviews
+                GROUP BY DATE_TRUNC('month', TO_DATE(SUBSTRING(h.interview_date_time_1, 1, 10), 'YYYY-MM-DD')), h.sector, h.four_1_1
+            ),
+            monthly_totals AS (
+                SELECT 
+                    month,
+                    SUM(households) AS total_households,
+                    SUM(population) AS total_population
+                FROM monthly_sector_data
+                GROUP BY month
+            )
+            SELECT
+                TO_CHAR(msd.month, 'Mon YYYY') AS month_display,
+                msd.month,
+                -- Urban
+                COALESCE(MAX(CASE WHEN msd.sector = 1 THEN msd.households END), 0) AS urban_households,
+                COALESCE(MAX(CASE WHEN msd.sector = 1 THEN msd.population END), 0) AS urban_population,
+                -- Peri-Urban
+                COALESCE(MAX(CASE WHEN msd.sector = 2 THEN msd.households END), 0) AS periurban_households,
+                COALESCE(MAX(CASE WHEN msd.sector = 2 THEN msd.population END), 0) AS periurban_population,
+                -- Settlement
+                COALESCE(MAX(CASE WHEN msd.sector = 3 THEN msd.households END), 0) AS settlement_households,
+                COALESCE(MAX(CASE WHEN msd.sector = 3 THEN msd.population END), 0) AS settlement_population,
+                -- Rural
+                COALESCE(MAX(CASE WHEN msd.sector = 4 THEN msd.households END), 0) AS rural_households,
+                COALESCE(MAX(CASE WHEN msd.sector = 4 THEN msd.population END), 0) AS rural_population,
+                -- Totals
+                mt.total_households,
+                mt.total_population
+            FROM monthly_sector_data msd
+            JOIN monthly_totals mt ON msd.month = mt.month
+            GROUP BY msd.month, mt.total_households, mt.total_population, month_display
+            ORDER BY msd.month;
+            """
+            
+            monthly_tally_df = pd.read_sql(monthly_tally_query, engine, params=(selected_site,))
+            
+            if not monthly_tally_df.empty:
+                # Create a styled dataframe with monthly breakdown
+                st.markdown("#### Progressive Monthly Tally by Sector")
+                
+                # Create a list to hold all monthly data
+                all_months_data = []
+                
+                # Process each month's data
+                for _, row in monthly_tally_df.iterrows():
+                    month_data = {
+                        'Month': row['month_display'],
+                        'Urban (HH)': row['urban_households'],
+                        'Urban (Pop)': row['urban_population'],
+                        'Peri-Urban (HH)': row['periurban_households'],
+                        'Peri-Urban (Pop)': row['periurban_population'],
+                        'Settlement (HH)': row['settlement_households'],
+                        'Settlement (Pop)': row['settlement_population'],
+                        'Rural (HH)': row['rural_households'],
+                        'Rural (Pop)': row['rural_population'],
+                        'Total (HH)': row['total_households'],
+                        'Total (Pop)': row['total_population']
+                    }
+                    all_months_data.append(month_data)
+                
+                # Create a dataframe with all months
+                display_df = pd.DataFrame(all_months_data)
+                
+                # Add a grand total row
+                if not display_df.empty:
+                    total_row = {
+                        'Month': 'GRAND TOTAL',
+                        'Urban (HH)': display_df['Urban (HH)'].sum(),
+                        'Urban (Pop)': display_df['Urban (Pop)'].sum(),
+                        'Peri-Urban (HH)': display_df['Peri-Urban (HH)'].sum(),
+                        'Peri-Urban (Pop)': display_df['Peri-Urban (Pop)'].sum(),
+                        'Settlement (HH)': display_df['Settlement (HH)'].sum(),
+                        'Settlement (Pop)': display_df['Settlement (Pop)'].sum(),
+                        'Rural (HH)': display_df['Rural (HH)'].sum(),
+                        'Rural (Pop)': display_df['Rural (Pop)'].sum(),
+                        'Total (HH)': display_df['Total (HH)'].sum(),
+                        'Total (Pop)': display_df['Total (Pop)'].sum()
+                    }
+                    display_df = pd.concat([display_df, pd.DataFrame([total_row])], ignore_index=True)
+                
+                # Display the dataframe with proper formatting
+                st.dataframe(
+                    display_df,
+                    column_config={
+                        "Month": st.column_config.TextColumn("Month"),
+                        "Urban (HH)": st.column_config.NumberColumn("Urban (HH)"),
+                        "Urban (Pop)": st.column_config.NumberColumn("Urban (Pop)"),
+                        "Peri-Urban (HH)": st.column_config.NumberColumn("Peri-Urban (HH)"),
+                        "Peri-Urban (Pop)": st.column_config.NumberColumn("Peri-Urban (Pop)"),
+                        "Settlement (HH)": st.column_config.NumberColumn("Settlement (HH)"),
+                        "Settlement (Pop)": st.column_config.NumberColumn("Settlement (Pop)"),
+                        "Rural (HH)": st.column_config.NumberColumn("Rural (HH)"),
+                        "Rural (Pop)": st.column_config.NumberColumn("Rural (Pop)"),
+                        "Total (HH)": st.column_config.NumberColumn("Total (HH)", help="Cumulative total of households"),
+                        "Total (Pop)": st.column_config.NumberColumn("Total (Pop)", help="Cumulative total of population")
+                    },
+                    hide_index=True,
+                    use_container_width=True
+                )
+                
+                # Download button for monthly tally
+                csv_monthly = monthly_tally_df.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="Download Monthly Tally Report (CSV)",
+                    data=csv_monthly,
+                    file_name=f"monthly_tally_report_{selected_site.lower()}.csv",
+                    mime="text/csv"
+                )
+                
+            else:
+                st.info("No monthly data available for the selected site.")
+                
+        except Exception as e:
+            st.error(f"Error generating monthly tally report: {e}")
+            
+        st.markdown("---")
+        
+        # Interview Outcomes
+        st.markdown("## Interview Outcomes")
+        
+        try:
+            # Interview outcomes query with household and population counts
+            outcomes_query = """
+            WITH outcomes AS (
+                SELECT
+                    h.key AS household_key,
+                    h.four_1_1 AS status_code,
+                    COUNT(DISTINCT i.key) AS population
+                FROM households h
+                LEFT JOIN individuals i ON i.parent_key = h.key
+                WHERE h.pro_name = %s
+                GROUP BY h.key, h.four_1_1
+            )
+            SELECT
+                'Completed' AS outcome_type,
+                COUNT(DISTINCT CASE WHEN status_code = 1 THEN household_key END) AS households,
+                COALESCE(SUM(CASE WHEN status_code = 1 THEN population ELSE 0 END), 0) AS population
+            FROM outcomes
+            
+            UNION ALL
+            
+            SELECT
+                'Partially completed' AS outcome_type,
+                COUNT(DISTINCT CASE WHEN status_code = 2 THEN household_key END) AS households,
+                COALESCE(SUM(CASE WHEN status_code = 2 THEN population ELSE 0 END), 0) AS population
+            FROM outcomes
+            
+            UNION ALL
+            
+            SELECT
+                'Refusal' AS outcome_type,
+                COUNT(DISTINCT CASE WHEN status_code = 3 THEN household_key END) AS households,
+                COALESCE(SUM(CASE WHEN status_code = 3 THEN population ELSE 0 END), 0) AS population
+            FROM outcomes
+            
+            UNION ALL
+            
+            SELECT
+                'No competent respondent' AS outcome_type,
+                COUNT(DISTINCT CASE WHEN status_code = 4 THEN household_key END) AS households,
+                COALESCE(SUM(CASE WHEN status_code = 4 THEN population ELSE 0 END), 0) AS population
+            FROM outcomes
+            
+            UNION ALL
+            
+            SELECT
+                'Absent for extended period' AS outcome_type,
+                COUNT(DISTINCT CASE WHEN status_code = 5 THEN household_key END) AS households,
+                COALESCE(SUM(CASE WHEN status_code = 5 THEN population ELSE 0 END), 0) AS population
+            FROM outcomes;
+            """
+            
+            outcomes_df = pd.read_sql(outcomes_query, engine, params=(selected_site,))
+            
+            if not outcomes_df.empty:
+                # Pivot the data for the desired format
+                pivot_df = outcomes_df.pivot_table(
+                    index='outcome_type',
+                    values=['households', 'population'],
+                    aggfunc='sum'
+                ).reset_index()
+                
+                # Create a list to hold all rows
+                table_data = []
+                
+                # Add header row
+                header = [''] + ['House', 'Pop.'] * 5
+                table_data.append(header)
+                
+                # Add data rows
+                for _, row in outcomes_df.iterrows():
+                    table_data.append([
+                        row['outcome_type'],
+                        int(row['households']),
+                        int(row['population'])
+                    ])
+                
+                # Convert to DataFrame for display
+                display_df = pd.DataFrame(table_data[1:], columns=['Outcome', 'House', 'Pop.'])
+                
+                # Display the table
+                st.dataframe(
+                    display_df,
+                    column_config={
+                        'Outcome': st.column_config.TextColumn('Outcome'),
+                        'House': st.column_config.NumberColumn('House'),
+                        'Pop.': st.column_config.NumberColumn('Pop.')
+                    },
+                    hide_index=True,
+                    use_container_width=True
+                )
+                
+                # Download button for outcomes
+                csv_outcomes = outcomes_df.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="Download Interview Outcomes (CSV)",
+                    data=csv_outcomes,
+                    file_name=f"interview_outcomes_{selected_site.lower()}.csv",
+                    mime="text/csv"
+                )
+            else:
+                st.info("No interview outcomes data available for the selected site.")
+                
+        except Exception as e:
+            st.error(f"Error generating interview outcomes report: {e}")
+            st.exception(e)
+            
+        st.markdown("---")
+        
+        # Mortality Data - Number of Deaths by Sector
+        st.markdown("## Mortality Data – Number of Deaths by Sector")
+        
+        try:
+            # Mortality by sector query with household consent data
+            mortality_query = """
+            SELECT * FROM (
+                SELECT
+                    CASE 
+                        WHEN sector = 1 THEN 'Urban'
+                        WHEN sector = 2 THEN 'Peri-Urban'
+                        WHEN sector = 3 THEN 'Settlement'
+                        WHEN sector = 4 THEN 'Rural'
+                        ELSE 'Unknown'
+                    END AS sector,
+                    COUNT(CASE WHEN consent_three_7_1 = 1 THEN key END) AS households_with_death,
+                    SUM(CASE 
+                            WHEN consent_three_7_1 = 1 
+                            THEN consent_death_three_7_2 
+                            ELSE 0 
+                        END) AS total_deaths
+                FROM households
+                WHERE pro_name = %s
+                GROUP BY sector
+
+                UNION ALL
+
+                -- TOTAL ROW
+                SELECT
+                    'TOTAL' AS sector,
+                    COUNT(CASE WHEN consent_three_7_1 = 1 THEN key END),
+                    SUM(CASE 
+                            WHEN consent_three_7_1 = 1 
+                            THEN consent_death_three_7_2 
+                            ELSE 0 
+                        END)
+                FROM households
+                WHERE pro_name = %s
+            ) AS subquery
+            ORDER BY 
+                CASE 
+                    WHEN sector='Urban' THEN 1
+                    WHEN sector='Peri-Urban' THEN 2
+                    WHEN sector='Settlement' THEN 3
+                    WHEN sector='Rural' THEN 4
+                    WHEN sector='TOTAL' THEN 5
+                    ELSE 6
+                END;
+            """
+            
+            mortality_df = pd.read_sql(mortality_query, engine, params=(selected_site, selected_site))
+            
+            if not mortality_df.empty:
+                # Display the mortality data in the requested format
+                st.markdown("""
+                | Sector | Households with Death | Total Deaths |
+                |--------|----------------------|--------------|
+                | **Urban** | | |
+                | | {urban_households:,} | {urban_deaths:,} |
+                | **Peri-Urban** | | |
+                | | {periurban_households:,} | {periurban_deaths:,} |
+                | **Settlement** | | |
+                | | {settlement_households:,} | {settlement_deaths:,} |
+                | **Rural** | | |
+                | | {rural_households:,} | {rural_deaths:,} |
+                | **TOTAL** | | |
+                | | {total_households:,} | {total_deaths:,} |
+                """.format(
+                    urban_households=mortality_df[mortality_df['sector'] == 'Urban']['households_with_death'].values[0] if not mortality_df[mortality_df['sector'] == 'Urban'].empty else 0,
+                    urban_deaths=mortality_df[mortality_df['sector'] == 'Urban']['total_deaths'].values[0] if not mortality_df[mortality_df['sector'] == 'Urban'].empty else 0,
+                    periurban_households=mortality_df[mortality_df['sector'] == 'Peri-Urban']['households_with_death'].values[0] if not mortality_df[mortality_df['sector'] == 'Peri-Urban'].empty else 0,
+                    periurban_deaths=mortality_df[mortality_df['sector'] == 'Peri-Urban']['total_deaths'].values[0] if not mortality_df[mortality_df['sector'] == 'Peri-Urban'].empty else 0,
+                    settlement_households=mortality_df[mortality_df['sector'] == 'Settlement']['households_with_death'].values[0] if not mortality_df[mortality_df['sector'] == 'Settlement'].empty else 0,
+                    settlement_deaths=mortality_df[mortality_df['sector'] == 'Settlement']['total_deaths'].values[0] if not mortality_df[mortality_df['sector'] == 'Settlement'].empty else 0,
+                    rural_households=mortality_df[mortality_df['sector'] == 'Rural']['households_with_death'].values[0] if not mortality_df[mortality_df['sector'] == 'Rural'].empty else 0,
+                    rural_deaths=mortality_df[mortality_df['sector'] == 'Rural']['total_deaths'].values[0] if not mortality_df[mortality_df['sector'] == 'Rural'].empty else 0,
+                    total_households=mortality_df[mortality_df['sector'] == 'TOTAL']['households_with_death'].values[0] if not mortality_df[mortality_df['sector'] == 'TOTAL'].empty else 0,
+                    total_deaths=mortality_df[mortality_df['sector'] == 'TOTAL']['total_deaths'].values[0] if not mortality_df[mortality_df['sector'] == 'TOTAL'].empty else 0
+                ))
+                
+                # Download button for mortality data
+                csv_mortality = mortality_df.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="Download Mortality Data (CSV)",
+                    data=csv_mortality,
+                    file_name=f"mortality_by_sector_{selected_site.lower()}.csv",
+                    mime="text/csv"
+                )
+            else:
+                st.info("No mortality data available for the selected site.")
+                
+        except Exception as e:
+            st.error(f"Error generating mortality report: {e}")
+            st.exception(e)
         
         st.caption("CHESS HDSS Monitoring Dashboard – Report generated automatically")
 
