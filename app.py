@@ -79,23 +79,27 @@ authenticator = stauth.Authenticate(
 # ---- UI / Login ----
 def show_login():
     st.markdown("<h1 style='text-align:center;'>🔐 Household Survey Dashboard</h1>", unsafe_allow_html=True)
-    name, authentication_status, username = authenticator.login(location="main")
-    location="main",
-    fields={
+
+    name, authentication_status, username = authenticator.login(
+        location="main"
+    )
+    location = "main",
+    fields = {
         "Form name": "Login",
         "Username": "Username",
         "Password": "Password",
         "Login": "Login"
     }
     )
-    
+
     if auth_status is False:
         st.error("Username/password is incorrect")
         return False, None
+
     if auth_status is None:
         st.warning("Please enter your username and password")
         return False, None
-    
+
     return True, {"name": name, "username": username}
 
 # ---- Main app ----
