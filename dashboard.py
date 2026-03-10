@@ -175,7 +175,7 @@ def main():
             SELECT 
                 location_name AS "Village",
                 location_num AS "Location Number",
-                four_1_1 AS "Household Number",
+                dwelling_number AS "Household Number",
                 four_3_1 AS "Data Collector",
                 four_5_1 AS "Quality Checker",
                 interview_date_time_1 AS "Interview Date/Time",
