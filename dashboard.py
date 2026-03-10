@@ -341,7 +341,9 @@ def main():
                     interview_date_time_1 AS interview_datetime,
                     consent_respondent_name,
                     consent_respondent_relo,
-                    consent_total_hh_members
+                    consent_total_hh_members,
+                    four_1_1 AS "Interview Result",
+                    four_3_2 AS "Interviewer Comments and Observations"
                 FROM households
                 WHERE 
                     agree_yes = 1
@@ -395,6 +397,14 @@ def main():
                             "consent_total_hh_members": st.column_config.NumberColumn(
                                 "Total HH Members",
                                 help="Total number of household members"
+                            ),
+                            "interview_result": st.column_config.NumberColumn(
+                                "Interview Result",
+                                help="Result code of the interview"
+                            ),
+                            "interviewer_comments_observations": st.column_config.TextColumn(
+                                "Interviewer Comments and Observations",
+                                help="Comments and observations from the interviewer"
                             )
                         },
                         hide_index=True,
