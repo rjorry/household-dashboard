@@ -335,7 +335,7 @@ def main():
                 SELECT
                     location_name,
                     location_num,
-                    four_1_1 AS dwelling_number,
+                    dwelling_number AS dwelling_number,
                     four_3_1 AS data_collector,
                     four_5_1 AS quality_checker,
                     interview_date_time_1 AS interview_datetime,
@@ -426,7 +426,7 @@ def main():
                     SELECT
                         h.location_name,
                         h.location_num,
-                        h.four_1_1 AS dwelling_number,
+                        dwelling_number AS dwelling_number,
                         h.four_3_1 AS data_collector,
                         h.four_5_1 AS quality_checker,
                         h.interview_date_time_1,
