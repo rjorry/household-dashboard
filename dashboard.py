@@ -440,6 +440,8 @@ def main():
                         h.four_3_1 AS data_collector,
                         h.four_5_1 AS quality_checker,
                         h.interview_date_time_1,
+                        h.four_1_1 AS interview_result,
+                        h.four_3_2 AS interviewer_comments_observations,
 
                         -- Individual fields
                         i.indiv_fname,
@@ -533,6 +535,14 @@ def main():
                                 "calculated_age": st.column_config.NumberColumn(
                                     "Age",
                                     help="Calculated age of the individual"
+                                ),
+                                "interview_result": st.column_config.NumberColumn(
+                                    "Interview Result",
+                                    help="Result code of the interview"
+                                ),
+                                "interviewer_comments_observations": st.column_config.TextColumn(
+                                    "Interviewer Comments and Observations",
+                                    help="Comments and observations from the interviewer"
                                 )
                             },
                             hide_index=True,
