@@ -179,6 +179,8 @@ def main():
                 four_3_1 AS "Data Collector",
                 four_5_1 AS "Quality Checker",
                 interview_date_time_1 AS "Interview Date/Time",
+                four_1_1 AS "Interview Result",
+                four_3_2 AS "Interviewer Comments and Observations",
                 
                 -- Original GPS Status Columns
                 CASE 
@@ -298,6 +300,14 @@ def main():
                         "Interview Date/Time": st.column_config.DatetimeColumn(
                             "Interview Date/Time",
                             format="DD/MM/YYYY HH:mm"
+                        ),
+                        "Interview Result": st.column_config.NumberColumn(
+                            "Interview Result",
+                            help="Result code of the interview"
+                        ),
+                        "Interviewer Comments and Observations": st.column_config.TextColumn(
+                            "Interviewer Comments and Observations",
+                            help="Comments and observations from the interviewer"
                         )
                     },
                     hide_index=True,
