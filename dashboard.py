@@ -562,6 +562,69 @@ def main():
                         st.exception(e)
                 else:
                     st.success("No individuals with missing name or sex information found!")
+                # Add Household Member Count Mismatch section
+            st.markdown("---")
+            st.subheader("Household Member Count Mismatch (Very Important)")
+            
+            try:
+                # Query for household member count mismatches
+                member_count_query = """
+                SELECT 
+                    h.location_name,
+                    h.location_num,
+                    h.four_1_1 AS dwelling_number,
+                    h.consent_total_hh_members AS declared_members,
+                    COUNT(i.key) AS recorded_members
+                FROM households h
+                LEFT JOIN individuals i
+                ON h.key = i.parent_key
+                WHERE h.agree_yes = 1
+                AND h.pro_name = %s
+                GROUP BY h.key, h.location_name, h.location_num, h.four_1_1, h.consent_total_hh_members
+                HAVING h.consent_total_hh_members <> COUNT(i.key);
+                """
+                
+                # Execute the query
+                member_count_df = pd.read_sql(member_count_query, engine, params=(selected_site,))
+                
+                if not member_count_df.empty:
+                    # Count mismatches
+                    total_mismatches = len(member_count_df)
+                    
+                    # Display summary metrics
+                    st.markdown("#### Mismatch Summary")
+                    st.metric("Households with Member Count Mismatches", f"{total_mismatches:,}")
+                    
+                    st.markdown("---")
+                    st.subheader("Detailed Mismatch Information")
+                    
+                    # Display the detailed table
+                    st.dataframe(
+                        member_count_df,
+                        column_config={
+                            "declared_members": st.column_config.NumberColumn(
+                                "Declared Members",
+                                help="Number of household members declared by respondent"
+                            ),
+                            "recorded_members": st.column_config.NumberColumn(
+                                "Recorded Members",
+                                help="Number of household members actually recorded in the database"
+                            )
+                        },
+                        hide_index=True,
+                        use_container_width=True
+                    )
+                    
+                    # Add download button for the data
+                    csv_member = member_count_df.to_csv(index=False).encode('utf-8')
+                    st.download_button(
+                        label="Download Member Count Mismatches (CSV)",
+                        data=csv_member,
+                        file_name=f"member_count_mismatches_{selected_site.lower()}.csv",
+                        mime="text/csv"
+                    )
+                else:
+                    st.success("No household member count mismatches found!")
                     
             except Exception as e:
                 st.error(f"Error in data quality section: {e}")
