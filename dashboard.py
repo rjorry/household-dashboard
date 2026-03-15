@@ -18,9 +18,9 @@ def main():
 
     # Database connection
     try:
-        supabase_url = st.secrets["connections"]["SUPABASE_URL"]
-        engine = create_engine(supabase_url)
-
+        engine = create_engine(
+            "postgresql://postgres:rj77megs!!@localhost:5432/chess_hdss_25"
+        )
         hh_df = pd.read_sql(
             """
             SELECT
@@ -36,14 +36,9 @@ def main():
             """,
             engine
         )
-
         ind_df = pd.read_sql("SELECT parent_key, key FROM individuals", engine)
-
-    except KeyError:
-        st.error("❗ Missing SUPABASE_URL in secrets.toml under [connections].")
-        st.stop()
     except Exception as e:
-        st.error(f"❗ Database connection failed: {e}")
+        st.error(f"Database connection failed: {e}")
         st.stop()
 
     # Site list & sector mapping
@@ -175,7 +170,7 @@ def main():
             SELECT 
                 location_name AS "Village",
                 location_num AS "Location Number",
-                dwelling_number AS "Household Number",
+                four_1_1 AS "Household Number",
                 four_3_1 AS "Data Collector",
                 four_5_1 AS "Quality Checker",
                 interview_date_time_1 AS "Interview Date/Time",
@@ -335,15 +330,15 @@ def main():
                 SELECT
                     location_name,
                     location_num,
-                    dwelling_number AS dwelling_number,
+                    four_1_1 AS dwelling_number,
                     four_3_1 AS data_collector,
                     four_5_1 AS quality_checker,
                     interview_date_time_1 AS interview_datetime,
+                    four_1_1 AS interview_result,
+                    four_3_2 AS interviewer_comments_observations,
                     consent_respondent_name,
                     consent_respondent_relo,
-                    consent_total_hh_members,
-                    four_1_1 AS "Interview Result",
-                    four_3_2 AS "Interviewer Comments and Observations"
+                    consent_total_hh_members
                 FROM households
                 WHERE 
                     agree_yes = 1
@@ -386,6 +381,14 @@ def main():
                                 "Interview Date/Time",
                                 format="DD/MM/YYYY HH:mm"
                             ),
+                            "interview_result": st.column_config.NumberColumn(
+                                "Interview Result",
+                                help="Result code of the interview"
+                            ),
+                            "interviewer_comments_observations": st.column_config.TextColumn(
+                                "Interviewer Comments and Observations",
+                                help="Comments and observations from the interviewer"
+                            ),
                             "consent_respondent_name": st.column_config.TextColumn(
                                 "Respondent Name",
                                 help="Name of the household respondent"
@@ -397,14 +400,6 @@ def main():
                             "consent_total_hh_members": st.column_config.NumberColumn(
                                 "Total HH Members",
                                 help="Total number of household members"
-                            ),
-                            "interview_result": st.column_config.NumberColumn(
-                                "Interview Result",
-                                help="Result code of the interview"
-                            ),
-                            "interviewer_comments_observations": st.column_config.TextColumn(
-                                "Interviewer Comments and Observations",
-                                help="Comments and observations from the interviewer"
                             )
                         },
                         hide_index=True,
@@ -436,7 +431,7 @@ def main():
                     SELECT
                         h.location_name,
                         h.location_num,
-                        dwelling_number AS dwelling_number,
+                        h.four_1_1 AS dwelling_number,
                         h.four_3_1 AS data_collector,
                         h.four_5_1 AS quality_checker,
                         h.interview_date_time_1,
@@ -508,6 +503,14 @@ def main():
                                     "Interview Date/Time",
                                     format="DD/MM/YYYY HH:mm"
                                 ),
+                                "interview_result": st.column_config.NumberColumn(
+                                    "Interview Result",
+                                    help="Result code of the interview"
+                                ),
+                                "interviewer_comments_observations": st.column_config.TextColumn(
+                                    "Interviewer Comments and Observations",
+                                    help="Comments and observations from the interviewer"
+                                ),
                                 "indiv_fname": st.column_config.TextColumn(
                                     "First Name",
                                     help="Individual's first name"
@@ -535,14 +538,6 @@ def main():
                                 "calculated_age": st.column_config.NumberColumn(
                                     "Age",
                                     help="Calculated age of the individual"
-                                ),
-                                "interview_result": st.column_config.NumberColumn(
-                                    "Interview Result",
-                                    help="Result code of the interview"
-                                ),
-                                "interviewer_comments_observations": st.column_config.TextColumn(
-                                    "Interviewer Comments and Observations",
-                                    help="Comments and observations from the interviewer"
                                 )
                             },
                             hide_index=True,
@@ -562,7 +557,8 @@ def main():
                         st.exception(e)
                 else:
                     st.success("No individuals with missing name or sex information found!")
-                # Add Household Member Count Mismatch section
+                    
+            # Add Household Member Count Mismatch section
             st.markdown("---")
             st.subheader("Household Member Count Mismatch (Very Important)")
             
@@ -632,11 +628,7 @@ def main():
                 
             st.success("Data quality check completed. See above for any data quality issues.")
 
-        except Exception as e:
-            st.error(f"Error in data quality section: {e}")
-            st.exception(e)
-
-     # ==================== TAB: Report ====================
+    # ==================== TAB: Report ====================
     with tab_report:
         # Form 1A - Daily Tally Report
         st.markdown(f"# Form 1A – DSP Household Demography Survey")
