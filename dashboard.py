@@ -501,7 +501,9 @@ def main():
                 SELECT 
                 h.location_name,
                 h.location_num,
-                h.dwelling_number
+                h.dwelling_number,
+                h.submittername AS submitter_name,
+                h.interview_date_time_1 AS interview_date
                 FROM households h
                 LEFT JOIN individuals i
                 ON h.key = i.parent_key
@@ -539,6 +541,14 @@ def main():
                             "dwelling_number": st.column_config.NumberColumn(
                                 "Dwelling Number",
                                 help="Household dwelling number"
+                            ),
+                            "submitter_name": st.column_config.TextColumn(
+                                "Submitter Name",
+                                help="Name of the data submitter"
+                            ),
+                            "interview_date": st.column_config.DatetimeColumn(
+                                "Interview Date",
+                                format="DD/MM/YYYY HH:mm"
                             )
                         },
                         hide_index=True,
