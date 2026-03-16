@@ -491,6 +491,75 @@ def main():
                 st.error(f"Error in household member count mismatch check: {e}")
                 st.exception(e)
 
+            # Households With No Members Recorded section
+            st.markdown("---")
+            st.subheader("Households With No Members Recorded")
+            
+            try:
+                # Query for households with no members recorded
+                no_members_query = """
+                SELECT 
+                h.location_name,
+                h.location_num,
+                h.dwelling_number
+                FROM households h
+                LEFT JOIN individuals i
+                ON h.key = i.parent_key
+                WHERE i.key IS NULL
+                AND h.agree_yes = 1
+                AND h.pro_name = %s;
+                """
+                
+                # Execute the query
+                no_members_df = pd.read_sql(no_members_query, engine, params=(selected_site,))
+                
+                if not no_members_df.empty:
+                    # Count households with no members
+                    total_no_members = len(no_members_df)
+                    
+                    # Display summary metrics
+                    st.markdown("#### Summary")
+                    st.metric("Households with No Members Recorded", f"{total_no_members:,}")
+                    
+                    st.markdown("---")
+                    st.subheader("Detailed Information")
+                    
+                    # Display the detailed table
+                    st.dataframe(
+                        no_members_df,
+                        column_config={
+                            "location_name": st.column_config.TextColumn(
+                                "Village",
+                                help="Location name"
+                            ),
+                            "location_num": st.column_config.NumberColumn(
+                                "Location Number",
+                                help="Location number"
+                            ),
+                            "dwelling_number": st.column_config.NumberColumn(
+                                "Dwelling Number",
+                                help="Household dwelling number"
+                            )
+                        },
+                        hide_index=True,
+                        use_container_width=True
+                    )
+                    
+                    # Add download button for the data
+                    csv_no_members = no_members_df.to_csv(index=False).encode('utf-8')
+                    st.download_button(
+                        label="Download Households with No Members (CSV)",
+                        data=csv_no_members,
+                        file_name=f"households_no_members_{selected_site.lower()}.csv",
+                        mime="text/csv"
+                    )
+                else:
+                    st.success("No households with no members recorded found!")
+                    
+            except Exception as e:
+                st.error(f"Error in households with no members check: {e}")
+                st.exception(e)
+
         except Exception as e:
             st.error(f"Error running GPS quality query: {e}")
 
