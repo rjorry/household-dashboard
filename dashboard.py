@@ -18,32 +18,32 @@ def main():
 
     # Database connection
     try:
-    engine = create_engine(st.secrets["connections"]["SUPABASE_URL"])
-
-    hh_df = pd.read_sql(
-        """
-        SELECT
-            key, pro_name, dist_name, llg_name, ward_name, location_name,
-            sector, submittername,
-            hh_gps_latitude, hh_gps_longitude, hh_gps_altitude, hh_gps_accuracy,
-            water_source_gps_latitude, water_source_gps_longitude,
-            toilet_gps_latitude, toilet_gps_longitude,
-            four_1_1 as dwelling_number, four_3_1, four_5_1,
-            submissiondate, interview_date_time_1,
-            agree_yes
-        FROM households
-        """,
-        engine
-    )
-
-    ind_df = pd.read_sql(
-        "SELECT parent_key, key FROM individuals",
-        engine
-    )
-
-except Exception as e:
-    st.error(f"Database connection failed: {e}")
-    st.stop()
+        engine = create_engine(st.secrets["connections"]["SUPABASE_URL"])
+    
+        hh_df = pd.read_sql(
+            """
+            SELECT
+                key, pro_name, dist_name, llg_name, ward_name, location_name,
+                sector, submittername,
+                hh_gps_latitude, hh_gps_longitude, hh_gps_altitude, hh_gps_accuracy,
+                water_source_gps_latitude, water_source_gps_longitude,
+                toilet_gps_latitude, toilet_gps_longitude,
+                four_1_1 as dwelling_number, four_3_1, four_5_1,
+                submissiondate, interview_date_time_1,
+                agree_yes
+            FROM households
+            """,
+            engine
+        )
+    
+        ind_df = pd.read_sql(
+            "SELECT parent_key, key FROM individuals",
+            engine
+        )
+    
+    except Exception as e:
+        st.error(f"Database connection failed: {e}")
+        st.stop()
 
     # Site list & sector mapping
     sites = ['central', 'east_new_britian', 'eastern_highlands', 'ncd', 'east_sepik']
