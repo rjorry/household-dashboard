@@ -412,7 +412,14 @@ def main():
                         label="Download Missing Respondent Data (CSV)",
                         data=csv_resp,
                         file_name=f"missing_respondent_info_{selected_site.lower()}.csv",
-            else:
-                st.success("No individuals with missing name or sex information found!")
-                    
-            st.success("Data quality check completed. See above for any data quality issues.")
+                        mime="text/csv"
+                    )
+            except Exception as e:
+                st.error(f"Error running respondent query: {e}")
+
+        except Exception as e:
+            st.error(f"Error running GPS quality query: {e}")
+
+# Call the main function to actually run the app
+if __name__ == "__main__":
+    main()
