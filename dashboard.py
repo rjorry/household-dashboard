@@ -94,7 +94,7 @@ def main():
             st.metric("Avg Household Size", avg)
 
         st.subheader("Interview Status")
-        if 'dwelling_number' in site_hh_df.columns:
+        if 'four_1_1' in site_hh_df.columns:
             interview_map = {
                 1: "Completed",
                 2: "Partially completed",
@@ -104,7 +104,7 @@ def main():
                 6: "Other (Specify)",
                 96: "Don't know"
             }
-            status = pd.to_numeric(site_hh_df['dwelling_number'], errors='coerce').map(interview_map)
+            status = pd.to_numeric(site_hh_df['four_1_1'], errors='coerce').map(interview_map)
             status_counts = status.value_counts().reset_index()
             status_counts.columns = ['Status', 'Count']
             status_counts['Percentage'] = (status_counts['Count'] / status_counts['Count'].sum() * 100).round(1).astype(str) + '%'
