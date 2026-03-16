@@ -317,6 +317,8 @@ def main():
                 csv = missing_gps_df.to_csv(index=False).encode('utf-8')
                 st.download_button(
                     label="Download Missing GPS Data (CSV)",
+                    data=csv,
+                    file_name=f"missing_gps_data_{selected_site.lower()}.csv",
                     mime="text/csv"
                 )
             else:
