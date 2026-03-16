@@ -420,96 +420,10 @@ def main():
             except Exception as e:
                 st.error(f"Error retrieving missing respondent information: {e}")
                 st.exception(e)
-            
-            # Add Missing Individual Name and Sex section
-            st.markdown("---")
-            st.subheader("Missing Individual Name and Sex")
-                
-            try:
-                # Query for missing individual information
-                missing_individual_query = """
-                    SELECT
-                        h.location_name,
-                        h.location_num,
-                        h.four_1_1 AS dwelling_number,
-                        h.four_3_1 AS data_collector,
-                        h.four_5_1 AS quality_checker,
-                        h.interview_date_time_1,
-                        h.four_1_1 AS interview_result,
-                        h.four_3_2 AS interviewer_comments_observations,
-
-                        -- Individual fields
-                        i.indiv_fname,
-                        i.indiv_lname,
-                        i.sex,
-                        i.indiv_line_num,
-                        i.relo_to_hh,
-                        i.age_category,
-                        i.calculated_age,
-                        i.marital_status,
-
-                        -- Keys
-                        i.parent_key,
-                        h.key AS household_key
-
-                    FROM individuals i
-                    JOIN households h 
-                        ON i.parent_key = h.key
-
-                    WHERE
-                        h.agree_yes = 1
-                        AND h.pro_name = %s
-                        AND i.indiv_line_num IS NOT NULL
-                        AND (
-                            i.indiv_fname IS NULL
-                            OR i.indiv_lname IS NULL
-                            OR i.sex IS NULL
-                        )
-                    ORDER BY h.location_name, h.location_num, h.four_1_1, i.indiv_line_num;
-                    """
-                # Execute the query
-                try:
-                    missing_individual_df = pd.read_sql(missing_individual_query, engine, params=(selected_site,))
                 except Exception as e:
-                    st.error(f"Error retrieving missing individual information: {e}")
+                    st.error(f"Error processing individual information: {e}")
                     st.exception(e)
-                    missing_individual_df = pd.DataFrame()
-                
-                if not missing_individual_df.empty:
-                    try:
-                        # Count missing values by field
-                        missing_fname = missing_individual_df['indiv_fname'].isna().sum()
-                        missing_lname = missing_individual_df['indiv_lname'].isna().sum()
-                        missing_sex = missing_individual_df['sex'].isna().sum()
-                        
-                        # Display summary metrics
-                        st.markdown("#### Missing Data Summary")
-                        col1, col2, col3 = st.columns(3)
-                        with col1:
-                            st.metric("Missing First Name", f"{missing_fname:,}")
-                        with col2:
-                            st.metric("Missing Last Name", f"{missing_lname:,}")
-                        with col3:
-                            st.metric("Missing Sex", f"{missing_sex:,}")
-                        
-                        st.markdown("---")
-                        st.subheader("Detailed Missing Information")
-                        
-                        # Display the detailed table
-                        st.dataframe(
-                            missing_individual_df.drop(columns=['parent_key', 'household_key']),  # Expose only necessary columns
-                            column_config={
-                                "interview_date_time_1": st.column_config.DatetimeColumn(
-                                    "Interview Date/Time",
-                                    format="DD/MM/YYYY HH:mm"
-                                ),
-                                "interview_result": st.column_config.NumberColumn(
-                                    "Interview Result",
-                                    help="Result code of the interview"
-                                ),
-                                "interviewer_comments_observations": st.column_config.TextColumn(
-                                    "Interviewer Comments and Observations",
-                                    help="Comments and observations from the interviewer"
-                                ),
-                                "indiv_fname": st.column_config.TextColumn(
-                                    "First Name",
+            else:
+                st.success("No individuals with missing name or sex information found!")
+                    
+            st.success("Data quality check completed. See above for any data quality issues.")
