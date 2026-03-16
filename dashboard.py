@@ -622,6 +622,10 @@ def main():
                 else:
                     st.success("No household member count mismatches found!")
                     
+            except Exception as e:
+                st.error(f"Error in data quality section: {e}")
+                st.exception(e)
+                
             st.success("Data quality check completed. See above for any data quality issues.")
 
     # ==================== TAB: Report ====================
