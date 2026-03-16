@@ -420,9 +420,6 @@ def main():
             except Exception as e:
                 st.error(f"Error retrieving missing respondent information: {e}")
                 st.exception(e)
-                except Exception as e:
-                    st.error(f"Error processing individual information: {e}")
-                    st.exception(e)
             else:
                 st.success("No individuals with missing name or sex information found!")
                     
