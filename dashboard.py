@@ -28,7 +28,7 @@ def main():
                 hh_gps_latitude, hh_gps_longitude, hh_gps_altitude, hh_gps_accuracy,
                 water_source_gps_latitude, water_source_gps_longitude,
                 toilet_gps_latitude, toilet_gps_longitude,
-                four_1_1 as dwelling_number, four_3_1, four_5_1,
+                dwelling_number as dwelling_number, four_3_1, four_5_1,
                 submissiondate, interview_date_time_1,
                 agree_yes
             FROM households
@@ -174,7 +174,7 @@ def main():
             SELECT 
                 location_name AS "Village",
                 location_num AS "Location Number",
-                four_1_1 AS "Household Number",
+                dwelling_number AS "Household Number",
                 four_3_1 AS "Data Collector",
                 four_5_1 AS "Quality Checker",
                 interview_date_time_1 AS "Interview Date/Time",
@@ -334,7 +334,7 @@ def main():
                 SELECT
                     location_name,
                     location_num,
-                    four_1_1 AS dwelling_number,
+                    dwelling_number AS dwelling_number,
                     four_3_1 AS data_collector,
                     four_5_1 AS quality_checker,
                     interview_date_time_1 AS interview_datetime,
