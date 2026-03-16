@@ -1,13 +1,19 @@
+# app.py
 import streamlit as st
 import streamlit_authenticator as stauth
 import yaml
 from yaml.loader import SafeLoader
 import os
 from pathlib import Path
+# Import dashboard here to make it available for the main function
+try:
+    from dashboard import main as dashboard_main
+except ModuleNotFoundError:
+    # If dashboard.py doesn't exist yet, this will catch it later in main()
+    dashboard_main = None
 
-# ────────────────────────────────────────────────
+
 # Page configuration
-# ────────────────────────────────────────────────
 st.set_page_config(
     page_title="Household Survey Dashboard",
     page_icon="🔐",
@@ -15,135 +21,119 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# ────────────────────────────────────────────────
-# Helper – local CSS (if you still use it)
-# ────────────────────────────────────────────────
-def local_css(file_name):
-    try:
-        with open(file_name) as f:
-            st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
-    except:
-        pass
+# --- Configuration Setup (No changes needed here) ---
 
-# ────────────────────────────────────────────────
-# Config & Auth setup
-# ────────────────────────────────────────────────
+# Create config directory if it doesn't exist
 config_dir = Path("./config")
 os.makedirs(config_dir, exist_ok=True)
 
+# Path to config file (will store hashed password)
 config_path = config_dir / "config.yaml"
 
+# If config doesn't exist, create it using secrets (secrets hold the plain password locally)
 if not config_path.exists():
-    # Create default config with hashed password
+    # Read credentials from Streamlit secrets (keep secrets.toml local and ignored by git)
+    try:
+        admin_username = st.secrets["auth"]["username"]
+        admin_email = st.secrets["auth"]["email"]
+        admin_password = st.secrets["auth"]["password"]
+    except Exception as e:
+        st.error("Missing auth secrets. Create .streamlit/secrets.toml with [auth] username, email, password.")
+        st.stop()
+    
+    # Build credentials with PLAIN password first
     credentials = {
         "usernames": {
-            "admin": {
-                "email": "admin@example.com",
+            admin_username: {
                 "name": "Admin User",
-                "password": "admin123"
+                "email": admin_email,
+                "password": admin_password  # ← Plain text here (safe, since it's local/secrets only)
             }
         }
     }
-
-    hashed_pw = stauth.Hasher(['admin123']).generate()[0]
-    credentials['usernames']['admin']['password'] = hashed_pw
-
+    
+    # NOW hash the password in-place using the full credentials dict
+    stauth.Hasher.hash_passwords(credentials)
+    # → Hashes credentials["usernames"][admin_username]["password"] securely
+    
     default_config = {
-        "credentials": credentials,
+        "credentials": credentials,  # ← Now contains the HASHED password
         "cookie": {
             "expiry_days": 1,
-            "key": "household_dashboard_auth",
+            "key": "household_dashboard_auth_key",  # you can change this to any random string
             "name": "household_dashboard_cookie"
         },
         "preauthorized": {
-            "emails": ["admin@example.com"]
+            "emails": [admin_email]
         }
     }
+    
+    # Save hashed credentials to config.yaml (this file contains only hashed password)
+    with open(config_path, "w") as fh:
+        yaml.dump(default_config, fh, sort_keys=False)
 
-    with open(config_path, 'w') as file:
-        yaml.dump(default_config, file, default_flow_style=False, sort_keys=False)
-
-# Load config
+# Load configuration (the file contains hashed password)
 with open(config_path) as file:
     config = yaml.load(file, Loader=SafeLoader)
 
 # Initialize authenticator
 authenticator = stauth.Authenticate(
-    credentials=config['credentials'],
-    cookie_name=config['cookie']['name'],
-    key=config['cookie']['key'],
-    cookie_expiry_days=config['cookie']['expiry_days'],
-    preauthorized=config['preauthorized']
+    credentials=config["credentials"],
+    cookie_name=config["cookie"]["name"],
+    key=config["cookie"]["key"],
+    cookie_expiry_days=config["cookie"]["expiry_days"],
+    preauthorized=config["preauthorized"]["emails"]
 )
 
-# ────────────────────────────────────────────────
-# Login page
-# ────────────────────────────────────────────────
-def login_page():
-    st.markdown("<h2 style='text-align: center;'>🔐 Household Survey Dashboard</h2>", unsafe_allow_html=True)
+# --- CORRECTED Login and Main Functions using Session State ---
+
+def show_login():
+    """Handles the login form display and state update via session_state."""
+    st.markdown("<h1 style='text-align:center;'>🔐 Household Survey Dashboard</h1>", unsafe_allow_html=True)
     
-    st.subheader("Login")
+    # Call the login function. This displays the form and updates st.session_state
+    # with keys: 'authentication_status', 'name', and 'username'.
+    authenticator.login(location="main")
     
-    username = st.text_input("Username")
-    password = st.text_input("Password", type="password")
-
-    if st.button("Login"):
-        if username == "admin" and password == "admin123":
-            # For hardcoded check (you can remove this later if using proper auth)
-            st.session_state['authentication_status'] = True
-            st.session_state['name'] = "Admin User"
-            st.session_state['username'] = "admin"
-            st.rerun()
-        else:
-            st.error("Incorrect username or password")
-
-# ────────────────────────────────────────────────
-# Main app logic
-# ────────────────────────────────────────────────
-def main_app():
-    # Sidebar welcome & logout
-    st.sidebar.write(f"Welcome **{st.session_state['name']}** 👋")
+    # Check the status written to session_state
+    if st.session_state["authentication_status"] is False:
+        st.error("Username/password is incorrect")
+    elif st.session_state["authentication_status"] is None:
+        st.warning("Please enter your username and password")
     
-    if st.sidebar.button("Logout"):
-        st.session_state['authentication_status'] = False
-        authenticator.logout("Logout", "sidebar")
-        st.rerun()
+    # Note: We don't return anything here. The main function will check st.session_state directly.
 
-    if st.sidebar.button("🔄 Refresh Data"):
-        st.rerun()
-
-    # ── Load dashboard only after login ──
-    with st.spinner("Loading dashboard..."):
-        try:
-            from dashboard import main as dashboard_main
-            dashboard_main()
-        except ModuleNotFoundError:
-            st.error("File **dashboard.py** was not found in the same folder.")
-            st.info("Make sure the dashboard code is saved in a file named exactly `dashboard.py`")
-        except ImportError as e:
-            st.error(f"Import error: {e}")
-            st.info("Check that dashboard.py has no syntax errors and all imports work.")
-        except Exception as e:
-            st.error("The dashboard failed to run.")
-            with st.expander("Show detailed error"):
+# ---- Main app ----
+def main():
+    # 1. Run the login process to display the form and update session state
+    show_login()
+    
+    # 2. Check the authentication status in session state
+    if st.session_state.get("authentication_status"):
+        # This block runs ONLY if login was successful (authentication_status is True)
+        
+        # Sidebar with logout and info
+        with st.sidebar:
+            # Access user info directly from session state
+            st.markdown(f"### Welcome *{st.session_state['name']}*")
+            # Log out button (will set authentication_status to False and RERUN)
+            authenticator.logout(button_name="Logout", location="sidebar")
+            st.markdown("---")
+            if st.button("Refresh Data"):
+                st.rerun()
+        
+        # Run the dashboard (imported from dashboard.py)
+        if dashboard_main:
+            try:
+                dashboard_main()
+            except Exception as e:
+                st.error(f"Error while loading dashboard: {e}")
                 st.exception(e)
+        else:
+            st.error("dashboard.py not found. Create dashboard.py in the same folder.")
 
-# ────────────────────────────────────────────────
-# Entry point
-# ────────────────────────────────────────────────
-if 'authentication_status' not in st.session_state:
-    st.session_state['authentication_status'] = False
+    # else: If authentication_status is False or None, the dashboard part is skipped, 
+    # and only the login form (displayed in show_login) is shown.
 
-if not st.session_state['authentication_status']:
-    login_page()
-else:
-    main_app()
-
-# Optional footer
-st.markdown(
-    """
-    <hr style='margin-top: 40px;'>
-    <small>Household Survey Dashboard • Support: ronnyjorry@gmail.com</small>
-    """,
-    unsafe_allow_html=True
-)
+if __name__ == "__main__":
+    main()
