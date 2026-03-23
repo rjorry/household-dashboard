@@ -584,7 +584,7 @@ def main():
                 FROM individuals i
                 JOIN households h
                 ON h.key = i.parent_key
-                WHERE i.relo_to_hh = 'Head'
+                WHERE i.relo_to_hh = 1
                 AND h.agree_yes = 1
                 AND h.pro_name = %s
                 GROUP BY h.key, h.location_name, h.dwelling_number, h.submittername
