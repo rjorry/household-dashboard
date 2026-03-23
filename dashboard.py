@@ -569,6 +569,81 @@ def main():
             except Exception as e:
                 st.error(f"Error in households with no members check: {e}")
                 st.exception(e)
+            # Multiple Household Heads Table section
+            st.markdown("---")
+            st.subheader("Multiple Household Heads Table")
+            
+            try:
+                # Query for households with multiple heads
+                multiple_heads_query = """
+                SELECT
+                h.location_name,
+                h.dwelling_number,
+                h.submittername AS submitter,
+                COUNT(*) AS head_count
+                FROM individuals i
+                JOIN households h
+                ON h.key = i.parent_key
+                WHERE i.relo_to_hh = 'Head'
+                AND h.agree_yes = 1
+                AND h.pro_name = %s
+                GROUP BY h.key, h.location_name, h.dwelling_number, h.submittername
+                HAVING COUNT(*) > 1;
+                """
+                
+                # Execute the query
+                multiple_heads_df = pd.read_sql(multiple_heads_query, engine, params=(selected_site,))
+                
+                if not multiple_heads_df.empty:
+                    # Count households with multiple heads
+                    total_multiple_heads = len(multiple_heads_df)
+                    
+                    # Display summary metrics
+                    st.markdown("#### Summary")
+                    st.metric("Households with Multiple Heads", f"{total_multiple_heads:,}")
+                    
+                    st.markdown("---")
+                    st.subheader("Detailed Information")
+                    
+                    # Display the detailed table
+                    st.dataframe(
+                        multiple_heads_df,
+                        column_config={
+                            "location_name": st.column_config.TextColumn(
+                                "Village",
+                                help="Location name"
+                            ),
+                            "dwelling_number": st.column_config.NumberColumn(
+                                "Dwelling Number",
+                                help="Household dwelling number"
+                            ),
+                            "submitter": st.column_config.TextColumn(
+                                "Submitter",
+                                help="Name of the data submitter"
+                            ),
+                            "head_count": st.column_config.NumberColumn(
+                                "Number of Heads",
+                                help="Number of household heads recorded"
+                            )
+                        },
+                        hide_index=True,
+                        use_container_width=True
+                    )
+                    
+                    # Add download button for the data
+                    csv_multiple_heads = multiple_heads_df.to_csv(index=False).encode('utf-8')
+                    st.download_button(
+                        label="Download Multiple Heads Households (CSV)",
+                        data=csv_multiple_heads,
+                        file_name=f"multiple_heads_households_{selected_site.lower()}.csv",
+                        mime="text/csv"
+                    )
+                else:
+                    st.success("No households with multiple heads found!")
+                    
+            except Exception as e:
+                st.error(f"Error in multiple household heads check: {e}")
+                st.exception(e)
 
         except Exception as e:
             st.error(f"Error running GPS quality query: {e}")
