@@ -645,6 +645,74 @@ def main():
                 st.error(f"Error in multiple household heads check: {e}")
                 st.exception(e)
 
+        # Households With No Head Table section
+            st.markdown("---")
+            st.subheader("Households With No Head Table")
+            
+            try:
+                # Query for households with no head
+                no_head_query = """
+                SELECT 
+                h.location_name,
+                h.dwelling_number,
+                h.submittername AS submitter
+                FROM households h
+                LEFT JOIN individuals i ON h.key = i.parent_key AND i.relo_to_hh = 1
+                WHERE h.agree_yes = 1
+                AND h.pro_name = %s
+                AND i.key IS NULL;
+                """
+                
+                # Execute the query
+                no_head_df = pd.read_sql(no_head_query, engine, params=(selected_site,))
+                
+                if not no_head_df.empty:
+                    # Count households with no head
+                    total_no_head = len(no_head_df)
+                    
+                    # Display summary metrics
+                    st.markdown("#### Summary")
+                    st.metric("Households with No Head", f"{total_no_head:,}")
+                    
+                    st.markdown("---")
+                    st.subheader("Detailed Information")
+                    
+                    # Display the detailed table
+                    st.dataframe(
+                        no_head_df,
+                        column_config={
+                            "location_name": st.column_config.TextColumn(
+                                "Village",
+                                help="Location name"
+                            ),
+                            "dwelling_number": st.column_config.NumberColumn(
+                                "Dwelling Number",
+                                help="Household dwelling number"
+                            ),
+                            "submitter": st.column_config.TextColumn(
+                                "Submitter",
+                                help="Name of the data submitter"
+                            )
+                        },
+                        hide_index=True,
+                        use_container_width=True
+                    )
+                    
+                    # Add download button for the data
+                    csv_no_head = no_head_df.to_csv(index=False).encode('utf-8')
+                    st.download_button(
+                        label="Download Households with No Head (CSV)",
+                        data=csv_no_head,
+                        file_name=f"households_no_head_{selected_site.lower()}.csv",
+                        mime="text/csv"
+                    )
+                else:
+                    st.success("No households with no head found!")
+                    
+            except Exception as e:
+                st.error(f"Error in households with no head check: {e}")
+                st.exception(e)
+
         except Exception as e:
             st.error(f"Error running GPS quality query: {e}")
 
