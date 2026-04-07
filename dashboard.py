@@ -822,7 +822,6 @@ def main():
                     h.dwelling_number,
                     h.four_3_1 AS data_collector,
                     h.interview_date_time_1 AS interview_datetime,
-                    i.key AS individual_id,
                     CONCAT(i.indiv_fname, ' ', i.indiv_lname) AS full_name,
                     i.relo_to_hh AS relationship_to_head,
                     i.sex
