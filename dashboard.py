@@ -831,10 +831,7 @@ def main():
                     ON h.key = i.parent_key
                 WHERE h.agree_yes = 1
                 AND h.pro_name = %s
-                AND (
-                    i.sex IS NULL 
-                    OR i.sex = ''
-                );
+                AND i.sex IS NULL;
                 """
                 
                 # Execute the query
