@@ -713,6 +713,101 @@ def main():
                 st.error(f"Error in households with no head check: {e}")
                 st.exception(e)
 
+        # Duplicate Households (Same dwelling_number) section
+            st.markdown("---")
+            st.subheader("Duplicate Households (Same dwelling_number)")
+            
+            try:
+                # Query for duplicate households with same dwelling_number
+                duplicate_households_query = """
+                SELECT 
+                    h.location_name,
+                    h.location_num,
+                    h.dwelling_number,
+                    i.indiv_fname AS first_name_hh,
+                    i.indiv_lname AS last_name_hh,
+                    COUNT(DISTINCT h.key) AS household_count,
+                    COUNT(i.key) AS total_individuals
+                FROM households h
+                LEFT JOIN individuals i 
+                    ON h.key = i.parent_key 
+                    AND i.relo_to_hh = 1
+                WHERE h.agree_yes = 1
+                AND h.pro_name = %s
+                GROUP BY 
+                    h.location_name,
+                    h.location_num,
+                    h.dwelling_number,
+                    i.indiv_fname,
+                    i.indiv_lname
+                HAVING COUNT(DISTINCT h.key) > 1;
+                """
+                
+                # Execute the query
+                duplicate_households_df = pd.read_sql(duplicate_households_query, engine, params=(selected_site,))
+                
+                if not duplicate_households_df.empty:
+                    # Count duplicate dwelling numbers
+                    total_duplicates = len(duplicate_households_df)
+                    
+                    # Display summary metrics
+                    st.markdown("#### Summary")
+                    st.metric("Duplicate Dwelling Numbers", f"{total_duplicates:,}")
+                    
+                    st.markdown("---")
+                    st.subheader("Detailed Information")
+                    
+                    # Display the detailed table
+                    st.dataframe(
+                        duplicate_households_df,
+                        column_config={
+                            "location_name": st.column_config.TextColumn(
+                                "Village",
+                                help="Location name"
+                            ),
+                            "location_num": st.column_config.NumberColumn(
+                                "Location Number",
+                                help="Location number"
+                            ),
+                            "dwelling_number": st.column_config.NumberColumn(
+                                "Dwelling Number",
+                                help="Household dwelling number"
+                            ),
+                            "first_name_hh": st.column_config.TextColumn(
+                                "First Name HH",
+                                help="First name of household head"
+                            ),
+                            "last_name_hh": st.column_config.TextColumn(
+                                "Last Name HH",
+                                help="Last name of household head"
+                            ),
+                            "household_count": st.column_config.NumberColumn(
+                                "Household Count",
+                                help="Number of households with this dwelling number"
+                            ),
+                            "total_individuals": st.column_config.NumberColumn(
+                                "Total Individuals",
+                                help="Total individuals in these households"
+                            )
+                        },
+                        hide_index=True,
+                        use_container_width=True
+                    )
+                    
+                    # Add download button for the data
+                    csv_duplicates = duplicate_households_df.to_csv(index=False).encode('utf-8')
+                    st.download_button(
+                        label="Download Duplicate Households (CSV)",
+                        data=csv_duplicates,
+                        file_name=f"duplicate_households_{selected_site.lower()}.csv",
+                        mime="text/csv"
+                    )
+                else:
+                    st.success("No duplicate households found!")
+                    
+            except Exception as e:
+                st.error(f"Error in duplicate households check: {e}")
+                st.exception(e)
         except Exception as e:
             st.error(f"Error running GPS quality query: {e}")
 
