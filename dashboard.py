@@ -808,6 +808,108 @@ def main():
             except Exception as e:
                 st.error(f"Error in duplicate households check: {e}")
                 st.exception(e)
+
+        # Duplicate Households (Same dwelling_number) section
+            st.markdown("---")
+            st.subheader("Missing Sex Table")
+            
+            try:
+                # Query for individuals with missing sex
+                missing_sex_query = """
+                SELECT 
+                    h.location_name,
+                    h.location_num,
+                    h.dwelling_number,
+                    h.four_3_1 AS data_collector,
+                    h.interview_date_time_1 AS interview_datetime,
+                    i.key AS individual_id,
+                    CONCAT(i.indiv_fname, ' ', i.indiv_lname) AS full_name,
+                    i.relo_to_hh AS relationship_to_head,
+                    i.sex
+                FROM households h
+                JOIN individuals i 
+                    ON h.key = i.parent_key
+                WHERE h.agree_yes = 1
+                AND h.pro_name = %s
+                AND (
+                    i.sex IS NULL 
+                    OR i.sex = ''
+                );
+                """
+                
+                # Execute the query
+                missing_sex_df = pd.read_sql(missing_sex_query, engine, params=(selected_site,))
+                
+                if not missing_sex_df.empty:
+                    # Count individuals with missing sex
+                    total_missing_sex = len(missing_sex_df)
+                    
+                    # Display summary metrics
+                    st.markdown("#### Summary")
+                    st.metric("Individuals with Missing Sex", f"{total_missing_sex:,}")
+                    
+                    st.markdown("---")
+                    st.subheader("Detailed Information")
+                    
+                    # Display the detailed table
+                    st.dataframe(
+                        missing_sex_df,
+                        column_config={
+                            "location_name": st.column_config.TextColumn(
+                                "Village",
+                                help="Location name"
+                            ),
+                            "location_num": st.column_config.NumberColumn(
+                                "Location Number",
+                                help="Location number"
+                            ),
+                            "dwelling_number": st.column_config.NumberColumn(
+                                "Dwelling Number",
+                                help="Household dwelling number"
+                            ),
+                            "data_collector": st.column_config.TextColumn(
+                                "Data Collector",
+                                help="Name of the data collector"
+                            ),
+                            "interview_datetime": st.column_config.DatetimeColumn(
+                                "Interview Date/Time",
+                                format="DD/MM/YYYY HH:mm"
+                            ),
+                            "individual_id": st.column_config.TextColumn(
+                                "Individual ID",
+                                help="Individual identifier"
+                            ),
+                            "full_name": st.column_config.TextColumn(
+                                "Full Name",
+                                help="Individual's full name"
+                            ),
+                            "relationship_to_head": st.column_config.NumberColumn(
+                                "Relationship to Head",
+                                help="Relationship code to household head"
+                            ),
+                            "sex": st.column_config.TextColumn(
+                                "Sex",
+                                help="Individual's sex (missing)"
+                            )
+                        },
+                        hide_index=True,
+                        use_container_width=True
+                    )
+                    
+                    # Add download button for the data
+                    csv_missing_sex = missing_sex_df.to_csv(index=False).encode('utf-8')
+                    st.download_button(
+                        label="Download Missing Sex Data (CSV)",
+                        data=csv_missing_sex,
+                        file_name=f"missing_sex_{selected_site.lower()}.csv",
+                        mime="text/csv"
+                    )
+                else:
+                    st.success("No individuals with missing sex found!")
+                    
+            except Exception as e:
+                st.error(f"Error in missing sex check: {e}")
+                st.exception(e)
         except Exception as e:
             st.error(f"Error running GPS quality query: {e}")
 
