@@ -809,6 +809,95 @@ def main():
                 st.error(f"Error in duplicate households check: {e}")
                 st.exception(e)
 
+            # Duplicate Names Table section
+            st.markdown("---")
+            st.subheader("Duplicate Names Table")
+            
+            try:
+                # Query for duplicate names in households
+                duplicate_names_query = """
+                SELECT 
+                    h.location_name,
+                    h.location_num,
+                    h.dwelling_number,
+                    CONCAT(i.indiv_fname, ' ', i.indiv_lname) AS full_name,
+                    COUNT(*) AS name_count
+                FROM households h
+                JOIN individuals i 
+                    ON h.key = i.parent_key
+                    AND i.relo_to_hh = 1
+                WHERE h.agree_yes = 1
+                AND h.pro_name = %s
+                GROUP BY 
+                    h.key,
+                    h.location_name,
+                    h.location_num,
+                    h.dwelling_number,
+                    CONCAT(i.indiv_fname, ' ', i.indiv_lname)
+                HAVING COUNT(*) > 1
+                ORDER BY 
+                    h.location_name,
+                    h.dwelling_number;
+                """
+                
+                # Execute the query
+                duplicate_names_df = pd.read_sql(duplicate_names_query, engine, params=(selected_site,))
+                
+                if not duplicate_names_df.empty:
+                    # Count duplicate names
+                    total_duplicate_names = len(duplicate_names_df)
+                    
+                    # Display summary metrics
+                    st.markdown("#### Summary")
+                    st.metric("Duplicate Names (Household Heads)", f"{total_duplicate_names:,}")
+                    
+                    st.markdown("---")
+                    st.subheader("Detailed Information")
+                    
+                    # Display the detailed table
+                    st.dataframe(
+                        duplicate_names_df,
+                        column_config={
+                            "location_name": st.column_config.TextColumn(
+                                "Village",
+                                help="Location name"
+                            ),
+                            "location_num": st.column_config.NumberColumn(
+                                "Location Number",
+                                help="Location number"
+                            ),
+                            "dwelling_number": st.column_config.NumberColumn(
+                                "Dwelling Number",
+                                help="Household dwelling number"
+                            ),
+                            "full_name": st.column_config.TextColumn(
+                                "Full Name",
+                                help="Full name of household head"
+                            ),
+                            "name_count": st.column_config.NumberColumn(
+                                "Name Count",
+                                help="Number of times this name appears"
+                            )
+                        },
+                        hide_index=True,
+                        use_container_width=True
+                    )
+                    
+                    # Add download button for the data
+                    csv_duplicate_names = duplicate_names_df.to_csv(index=False).encode('utf-8')
+                    st.download_button(
+                        label="Download Duplicate Names (CSV)",
+                        data=csv_duplicate_names,
+                        file_name=f"duplicate_names_{selected_site.lower()}.csv",
+                        mime="text/csv"
+                    )
+                else:
+                    st.success("No duplicate names found!")
+                    
+            except Exception as e:
+                st.error(f"Error in duplicate names check: {e}")
+                st.exception(e)
+
         # Duplicate Households (Same dwelling_number) section
             st.markdown("---")
             st.subheader("Missing Sex Table")
