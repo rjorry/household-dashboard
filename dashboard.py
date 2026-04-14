@@ -337,13 +337,13 @@ def main():
                     h.dwelling_number,
                     h.four_3_1 AS data_collector,
                     h.interview_date_time_1 AS interview_datetime,
-                    h.consent_pic
+                    h.consent_consent_pic
                 FROM households h
                 WHERE h.agree_yes = 1
                 AND h.pro_name = %s
                 AND (
-                    h.consent_pic IS NULL
-                    OR h.consent_pic = ''
+                    h.consent_consent_pic IS NULL
+                    OR h.consent_consent_pic = ''
                 );
                 """
 
@@ -385,7 +385,7 @@ def main():
                                 "Interview Date/Time",
                                 format="DD/MM/YYYY HH:mm"
                             ),
-                            "consent_pic": st.column_config.TextColumn(
+                            "consent_consent_pic": st.column_config.TextColumn(
                                 "Consent Picture",
                                 help="Consent picture (missing)"
                             )
