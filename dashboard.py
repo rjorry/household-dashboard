@@ -324,6 +324,90 @@ def main():
             else:
                 st.success("No household member count mismatches found!")
                     
+            # Table Check Missing Consent section
+            st.markdown("---")
+            st.subheader("Table Check Missing Consent")
+
+            try:
+                # Query for households with missing consent
+                missing_consent_query = """
+                SELECT
+                    h.location_name,
+                    h.location_num,
+                    h.dwelling_number,
+                    h.four_3_1 AS data_collector,
+                    h.interview_date_time_1 AS interview_datetime,
+                    h.consent_pic
+                FROM households h
+                WHERE h.agree_yes = 1
+                AND h.pro_name = %s
+                AND (
+                    h.consent_pic IS NULL
+                    OR h.consent_pic = ''
+                );
+                """
+
+                # Execute the query
+                missing_consent_df = pd.read_sql(missing_consent_query, engine, params=(selected_site,))
+
+                if not missing_consent_df.empty:
+                    # Count households with missing consent
+                    total_missing_consent = len(missing_consent_df)
+
+                    # Display summary metrics
+                    st.markdown("#### Summary")
+                    st.metric("Households with Missing Consent", f"{total_missing_consent:,}")
+
+                    st.markdown("---")
+                    st.subheader("Detailed Information")
+
+                    # Display the detailed table
+                    st.dataframe(
+                        missing_consent_df,
+                        column_config={
+                            "location_name": st.column_config.TextColumn(
+                                "Village",
+                                help="Location name"
+                            ),
+                            "location_num": st.column_config.NumberColumn(
+                                "Location Number",
+                                help="Location number"
+                            ),
+                            "dwelling_number": st.column_config.NumberColumn(
+                                "Dwelling Number",
+                                help="Household dwelling number"
+                            ),
+                            "data_collector": st.column_config.TextColumn(
+                                "Data Collector",
+                                help="Name of the data collector"
+                            ),
+                            "interview_datetime": st.column_config.DatetimeColumn(
+                                "Interview Date/Time",
+                                format="DD/MM/YYYY HH:mm"
+                            ),
+                            "consent_pic": st.column_config.TextColumn(
+                                "Consent Picture",
+                                help="Consent picture (missing)"
+                            )
+                        },
+                        hide_index=True,
+                        use_container_width=True
+                    )
+
+                    # Add download button for the data
+                    csv_missing_consent = missing_consent_df.to_csv(index=False).encode('utf-8')
+                    st.download_button(
+                        label="Download Missing Consent Data (CSV)",
+                        data=csv_missing_consent,
+                        file_name=f"missing_consent_{selected_site.lower()}.csv",
+                        mime="text/csv"
+                    )
+                else:
+                    st.success("No households with missing consent found!")
+
+            except Exception as e:
+                st.error(f"Error in missing consent check: {e}")
+                st.exception(e)
             # Missing Respondent or HH Member Information section
             st.markdown("---")
             st.subheader("Missing Respondent or HH Member Information")
