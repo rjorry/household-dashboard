@@ -144,7 +144,7 @@ def main():
     with tab3:
         st.header(f"Data Collectors – {selected_site.replace('_', ' ').title()}")
         if 'submittername' in site_hh_df.columns:
-            collector = site_hh_df['submittername'].value_counts().head(15).reset_index()
+            collector = site_hh_df['submittername'].value_counts().head(23).reset_index()
             fig = px.bar(collector, x='submittername', y='count', color='submittername',
                          title="Households per Data Collector")
             st.plotly_chart(fig, use_container_width=True)
