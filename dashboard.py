@@ -1080,7 +1080,8 @@ def main():
                 st.error(f"Error in missing sex check: {e}")
                 st.exception(e)
 
-        # Missing Age Table section
+        
+            # Missing Age Table section
             st.markdown("---")
             st.subheader("Missing Age Table")
 
@@ -1116,37 +1117,37 @@ def main():
                     CASE
                         -- ❌ Years selected but missing
                         WHEN i.age_category = 'mb1a_age_years'
-                             AND (i.age_year IS NULL OR i.age_year = '' OR i.age_year = '888')
+                             AND (i.age_year IS NULL OR i.age_year = 888)
                         THEN 'Year selected but age_year missing or invalid'
 
                         -- ❌ Months selected but missing
                         WHEN i.age_category = 'mb1a_age_months'
-                             AND (i.age_month IS NULL OR i.age_month = '' OR i.age_month = '888')
+                             AND (i.age_month IS NULL OR i.age_month = 888)
                         THEN 'Month selected but age_month missing or invalid'
 
                         -- ❌ Days selected but missing
                         WHEN i.age_category = 'mb1a_age_days'
-                             AND (i.age_days IS NULL OR i.age_days = '' OR i.age_days = '888')
+                             AND (i.age_days IS NULL OR i.age_days = 888)
                         THEN 'Day selected but age_days missing or invalid'
 
                         -- ❌ 888 used but no estimate
-                        WHEN i.age_year = '888'
+                        WHEN i.age_year = 888
                              AND (i.est_age_years IS NULL OR i.est_age_years = '')
                         THEN 'Year unknown but estimate missing'
 
-                        WHEN i.age_month = '888'
+                        WHEN i.age_month = 888
                              AND (i.est_age_month IS NULL OR i.est_age_month = '')
                         THEN 'Month unknown but estimate missing'
 
-                        WHEN i.age_days = '888'
+                        WHEN i.age_days = 888
                              AND (i.est_age_days IS NULL OR i.est_age_days = '')
                         THEN 'Day unknown but estimate missing'
 
                         -- ❌ All empty
                         WHEN
-                            (i.age_year IS NULL OR i.age_year = '') AND
-                            (i.age_month IS NULL OR i.age_month = '') AND
-                            (i.age_days IS NULL OR i.age_days = '') AND
+                            (i.age_year IS NULL) AND
+                            (i.age_month IS NULL) AND
+                            (i.age_days IS NULL) AND
                             (i.est_age_years IS NULL OR i.est_age_years = '') AND
                             (i.est_age_month IS NULL OR i.est_age_month = '') AND
                             (i.est_age_days IS NULL OR i.est_age_days = '')
