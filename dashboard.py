@@ -1170,32 +1170,32 @@ def main():
                     -- Only show problematic records
                     (
                         i.age_category = 'mb1a_age_years'
-                        AND (i.age_year IS NULL OR i.age_year = '' OR i.age_year = '888')
+                        AND (i.age_year IS NULL OR i.age_year = 888)
                     )
                     OR
                     (
                         i.age_category = 'mb1a_age_months'
-                        AND (i.age_month IS NULL OR i.age_month = '' OR i.age_month = '888')
+                        AND (i.age_month IS NULL OR i.age_month = 888)
                     )
                     OR
                     (
                         i.age_category = 'mb1a_age_days'
-                        AND (i.age_days IS NULL OR i.age_days = '' OR i.age_days = '888')
+                        AND (i.age_days IS NULL OR i.age_days = 888)
                     )
                     OR
-                    (i.age_year = '888' AND (i.est_age_years IS NULL OR i.est_age_years = ''))
+                    (i.age_year = 888 AND (i.est_age_years IS NULL))
                     OR
-                    (i.age_month = '888' AND (i.est_age_month IS NULL OR i.est_age_month = ''))
+                    (i.age_month = 888 AND (i.est_age_month IS NULL))
                     OR
-                    (i.age_days = '888' AND (i.est_age_days IS NULL OR i.est_age_days = ''))
+                    (i.age_days = 888 AND (i.est_age_days IS NULL))
                     OR
                     (
-                        (i.age_year IS NULL OR i.age_year = '') AND
-                        (i.age_month IS NULL OR i.age_month = '') AND
-                        (i.age_days IS NULL OR i.age_days = '') AND
-                        (i.est_age_years IS NULL OR i.est_age_years = '') AND
-                        (i.est_age_month IS NULL OR i.est_age_month = '') AND
-                        (i.est_age_days IS NULL OR i.est_age_days = '')
+                        (i.age_year IS NULL) AND
+                        (i.age_month IS NULL) AND
+                        (i.age_days IS NULL) AND
+                        (i.est_age_years IS NULL) AND
+                        (i.est_age_month IS NULL) AND
+                        (i.est_age_days IS NULL)
                     )
                 )
 
