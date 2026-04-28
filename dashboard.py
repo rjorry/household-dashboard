@@ -507,7 +507,7 @@ def main():
 
             # Household Member Count Mismatch section
             st.markdown("---")
-            st.subheader("Household Member Count Mismatch")
+            st.subheader("Household Member Count Mismatch (For Data Managers ONLY!)")
             
             try:
                 # Query for household member count mismatches
@@ -1078,6 +1078,243 @@ def main():
                     
             except Exception as e:
                 st.error(f"Error in missing sex check: {e}")
+                st.exception(e)
+
+        # Missing Age Table section
+            st.markdown("---")
+            st.subheader("Missing Age Table")
+
+            try:
+                # Query for individuals with missing or invalid age data
+                missing_age_query = """
+                SELECT
+                    h.ward_name,
+                    h.location_name,
+                    h.dwelling_number,
+
+                    h.four_3_1 AS data_collector,
+                    h.four_5_1 AS data_quality_check_by,
+                    h.four_1_1 AS result_of_interview,
+                    h.four_3_2 AS interview_comment_observation,
+                    h.submittername,
+
+                    -- Household head
+                    CONCAT(head.indiv_fname, ' ', head.indiv_lname) AS household_head_name,
+
+                    -- Individual
+                    CONCAT(i.indiv_fname, ' ', i.indiv_lname) AS individual_name,
+                    i.indiv_line_num,
+                    i.age_category,
+
+                    i.age_year,
+                    i.age_month,
+                    i.age_days,
+                    i.est_age_years,
+                    i.est_age_month,
+                    i.est_age_days,
+
+                    CASE
+                        -- ❌ Years selected but missing
+                        WHEN i.age_category = 'mb1a_age_years'
+                             AND (i.age_year IS NULL OR i.age_year = '' OR i.age_year = '888')
+                        THEN 'Year selected but age_year missing or invalid'
+
+                        -- ❌ Months selected but missing
+                        WHEN i.age_category = 'mb1a_age_months'
+                             AND (i.age_month IS NULL OR i.age_month = '' OR i.age_month = '888')
+                        THEN 'Month selected but age_month missing or invalid'
+
+                        -- ❌ Days selected but missing
+                        WHEN i.age_category = 'mb1a_age_days'
+                             AND (i.age_days IS NULL OR i.age_days = '' OR i.age_days = '888')
+                        THEN 'Day selected but age_days missing or invalid'
+
+                        -- ❌ 888 used but no estimate
+                        WHEN i.age_year = '888'
+                             AND (i.est_age_years IS NULL OR i.est_age_years = '')
+                        THEN 'Year unknown but estimate missing'
+
+                        WHEN i.age_month = '888'
+                             AND (i.est_age_month IS NULL OR i.est_age_month = '')
+                        THEN 'Month unknown but estimate missing'
+
+                        WHEN i.age_days = '888'
+                             AND (i.est_age_days IS NULL OR i.est_age_days = '')
+                        THEN 'Day unknown but estimate missing'
+
+                        -- ❌ All empty
+                        WHEN
+                            (i.age_year IS NULL OR i.age_year = '') AND
+                            (i.age_month IS NULL OR i.age_month = '') AND
+                            (i.age_days IS NULL OR i.age_days = '') AND
+                            (i.est_age_years IS NULL OR i.est_age_years = '') AND
+                            (i.est_age_month IS NULL OR i.est_age_month = '') AND
+                            (i.est_age_days IS NULL OR i.est_age_days = '')
+                        THEN 'All age fields missing'
+
+                    END AS issue
+
+                FROM households h
+
+                JOIN individuals i
+                    ON h.key = i.parent_key
+
+                LEFT JOIN individuals head
+                    ON h.key = head.parent_key
+                    AND head.relo_to_hh = 1
+
+                WHERE h.agree_yes = 1
+                AND h.pro_name = %s
+                AND (
+                    -- Only show problematic records
+                    (
+                        i.age_category = 'mb1a_age_years'
+                        AND (i.age_year IS NULL OR i.age_year = '' OR i.age_year = '888')
+                    )
+                    OR
+                    (
+                        i.age_category = 'mb1a_age_months'
+                        AND (i.age_month IS NULL OR i.age_month = '' OR i.age_month = '888')
+                    )
+                    OR
+                    (
+                        i.age_category = 'mb1a_age_days'
+                        AND (i.age_days IS NULL OR i.age_days = '' OR i.age_days = '888')
+                    )
+                    OR
+                    (i.age_year = '888' AND (i.est_age_years IS NULL OR i.est_age_years = ''))
+                    OR
+                    (i.age_month = '888' AND (i.est_age_month IS NULL OR i.est_age_month = ''))
+                    OR
+                    (i.age_days = '888' AND (i.est_age_days IS NULL OR i.est_age_days = ''))
+                    OR
+                    (
+                        (i.age_year IS NULL OR i.age_year = '') AND
+                        (i.age_month IS NULL OR i.age_month = '') AND
+                        (i.age_days IS NULL OR i.age_days = '') AND
+                        (i.est_age_years IS NULL OR i.est_age_years = '') AND
+                        (i.est_age_month IS NULL OR i.est_age_month = '') AND
+                        (i.est_age_days IS NULL OR i.est_age_days = '')
+                    )
+                )
+
+                ORDER BY
+                    h.location_name,
+                    h.dwelling_number;
+                """
+
+                # Execute the query
+                missing_age_df = pd.read_sql(missing_age_query, engine, params=(selected_site,))
+
+                if not missing_age_df.empty:
+                    # Count individuals with missing age data
+                    total_missing_age = len(missing_age_df)
+
+                    # Display summary metrics
+                    st.markdown("#### Summary")
+                    st.metric("Individuals with Missing Age Data", f"{total_missing_age:,}")
+
+                    st.markdown("---")
+                    st.subheader("Detailed Information")
+
+                    # Display the detailed table
+                    st.dataframe(
+                        missing_age_df,
+                        column_config={
+                            "ward_name": st.column_config.TextColumn(
+                                "Ward",
+                                help="Ward name"
+                            ),
+                            "location_name": st.column_config.TextColumn(
+                                "Village",
+                                help="Location name"
+                            ),
+                            "dwelling_number": st.column_config.NumberColumn(
+                                "Dwelling Number",
+                                help="Household dwelling number"
+                            ),
+                            "data_collector": st.column_config.TextColumn(
+                                "Data Collector",
+                                help="Name of the data collector"
+                            ),
+                            "data_quality_check_by": st.column_config.TextColumn(
+                                "Quality Check By",
+                                help="Person who performed data quality check"
+                            ),
+                            "result_of_interview": st.column_config.TextColumn(
+                                "Interview Result",
+                                help="Result of the interview"
+                            ),
+                            "interview_comment_observation": st.column_config.TextColumn(
+                                "Interview Comments",
+                                help="Comments or observations from interview"
+                            ),
+                            "submittername": st.column_config.TextColumn(
+                                "Submitter",
+                                help="Name of the submitter"
+                            ),
+                            "household_head_name": st.column_config.TextColumn(
+                                "Household Head",
+                                help="Name of the household head"
+                            ),
+                            "individual_name": st.column_config.TextColumn(
+                                "Individual Name",
+                                help="Name of the individual"
+                            ),
+                            "indiv_line_num": st.column_config.NumberColumn(
+                                "Line Number",
+                                help="Individual line number in household"
+                            ),
+                            "age_category": st.column_config.TextColumn(
+                                "Age Category",
+                                help="Age category selected (years/months/days)"
+                            ),
+                            "age_year": st.column_config.TextColumn(
+                                "Age (Years)",
+                                help="Age in years"
+                            ),
+                            "age_month": st.column_config.TextColumn(
+                                "Age (Months)",
+                                help="Age in months"
+                            ),
+                            "age_days": st.column_config.TextColumn(
+                                "Age (Days)",
+                                help="Age in days"
+                            ),
+                            "est_age_years": st.column_config.TextColumn(
+                                "Est. Age (Years)",
+                                help="Estimated age in years"
+                            ),
+                            "est_age_month": st.column_config.TextColumn(
+                                "Est. Age (Months)",
+                                help="Estimated age in months"
+                            ),
+                            "est_age_days": st.column_config.TextColumn(
+                                "Est. Age (Days)",
+                                help="Estimated age in days"
+                            ),
+                            "issue": st.column_config.TextColumn(
+                                "Issue Description",
+                                help="Description of the age data issue"
+                            )
+                        },
+                        hide_index=True,
+                        use_container_width=True
+                    )
+
+                    # Add download button for the data
+                    csv_missing_age = missing_age_df.to_csv(index=False).encode('utf-8')
+                    st.download_button(
+                        label="Download Missing Age Data (CSV)",
+                        data=csv_missing_age,
+                        file_name=f"missing_age_{selected_site.lower()}.csv",
+                        mime="text/csv"
+                    )
+                else:
+                    st.success("No individuals with missing age data found!")
+
+            except Exception as e:
+                st.error(f"Error in missing age check: {e}")
                 st.exception(e)
         except Exception as e:
             st.error(f"Error running GPS quality query: {e}")
