@@ -1132,15 +1132,15 @@ def main():
 
                         -- ❌ 888 used but no estimate
                         WHEN i.age_year = 888
-                             AND (i.est_age_years IS NULL OR i.est_age_years = '')
+                             AND i.est_age_years IS NULL
                         THEN 'Year unknown but estimate missing'
 
                         WHEN i.age_month = 888
-                             AND (i.est_age_month IS NULL OR i.est_age_month = '')
+                             AND i.est_age_month IS NULL
                         THEN 'Month unknown but estimate missing'
 
                         WHEN i.age_days = 888
-                             AND (i.est_age_days IS NULL OR i.est_age_days = '')
+                             AND i.est_age_days IS NULL
                         THEN 'Day unknown but estimate missing'
 
                         -- ❌ All empty
@@ -1148,9 +1148,9 @@ def main():
                             (i.age_year IS NULL) AND
                             (i.age_month IS NULL) AND
                             (i.age_days IS NULL) AND
-                            (i.est_age_years IS NULL OR i.est_age_years = '') AND
-                            (i.est_age_month IS NULL OR i.est_age_month = '') AND
-                            (i.est_age_days IS NULL OR i.est_age_days = '')
+                            (i.est_age_years IS NULL) AND
+                            (i.est_age_month IS NULL) AND
+                            (i.est_age_days IS NULL)
                         THEN 'All age fields missing'
 
                     END AS issue
