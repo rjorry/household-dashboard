@@ -875,7 +875,7 @@ def main():
                     )
             
                     st.dataframe(
-                        styled_df,
+                        duplicate_households_df,
                         column_config={
                             "location_name": st.column_config.TextColumn(
                                 "Village",
