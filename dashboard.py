@@ -426,7 +426,7 @@ def main():
             else:
                 st.success("No GPS Queries found!")
                     
-            # Table Check Missing Consent section
+           # Table Check Missing Consent section
             st.markdown("---")
             st.subheader("Table Check Missing Consent")
 
