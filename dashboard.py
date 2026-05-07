@@ -176,10 +176,10 @@ def main():
                 location_name AS "Village",
                 location_num AS "Location Number",
                 dwelling_number AS "Household Number",
-                three_4_1 AS "Type of Household",
-                three_1_1 AS "Main source of Drinking Water",
-                three_1_3 AS "cooking and hand washing water source",
-                three_1_9 AS "Types of Toilet",
+                consent_hhses_three_4_1 AS "Type of Household",
+                consent_hhses_three_1_1 AS "Main source of Drinking Water",
+                consent_hhses_three_1_3 AS "cooking and hand washing water source",
+                consent_hhses_three_1_9 AS "Types of Toilet",
                 four_3_1 AS "Data Collector",
                 four_5_1 AS "Quality Checker",
                 interview_date_time_1 AS "Interview Date/Time",
@@ -367,7 +367,7 @@ def main():
                     mime="text/csv"
                 )
             else:
-                st.success("No GPS Query found!")
+                st.success("No GPS Queries found!")
                     
             # Table Check Missing Consent section
             st.markdown("---")
