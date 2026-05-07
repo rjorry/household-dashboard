@@ -434,13 +434,18 @@ def main():
                 # Query for households with missing consent
                 missing_consent_query = """
                 SELECT
+                    h.ward_name,
                     h.location_name,
                     h.location_num,
                     h.dwelling_number,
+                    CONCAT(head.indiv_fname, ' ', head.indiv_lname) AS household_head_name,
                     h.four_3_1 AS data_collector,
                     h.interview_date_time_1 AS interview_datetime,
                     h.consent_consent_pic
                 FROM households h
+                LEFT JOIN individuals head
+                    ON h.key = head.parent_key
+                    AND head.relo_to_hh = 1
                 WHERE h.agree_yes = 1
                 AND h.pro_name = %s
                 AND (
@@ -462,11 +467,14 @@ def main():
 
                     st.markdown("---")
                     st.subheader("Detailed Information")
-
                     # Display the detailed table
                     st.dataframe(
                         missing_consent_df,
                         column_config={
+                            "ward_name": st.column_config.TextColumn(
+                                "Ward Name",
+                                help="Ward name"
+                            ),
                             "location_name": st.column_config.TextColumn(
                                 "Village",
                                 help="Location name"
@@ -478,6 +486,10 @@ def main():
                             "dwelling_number": st.column_config.NumberColumn(
                                 "Dwelling Number",
                                 help="Household dwelling number"
+                            ),
+                            "household_head_name": st.column_config.TextColumn(
+                                "Household Head Name",
+                                help="Name of the household head"
                             ),
                             "data_collector": st.column_config.TextColumn(
                                 "Data Collector",
