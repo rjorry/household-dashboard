@@ -171,10 +171,15 @@ def main():
         # Run the missing GPS query
         try:
             missing_gps_query = """
-            SELECT 
+            SELECT
+                ward_name,
                 location_name AS "Village",
                 location_num AS "Location Number",
                 dwelling_number AS "Household Number",
+                three_4_1 AS "Type of Household",
+                three_1_1 AS "Main source of Drinking Water",
+                three_1_3 AS "cooking and hand washing water source",
+                three_1_9 AS "Types of Toilet",
                 four_3_1 AS "Data Collector",
                 four_5_1 AS "Quality Checker",
                 interview_date_time_1 AS "Interview Date/Time",
@@ -182,10 +187,10 @@ def main():
                 four_3_2 AS "Interviewer Comments and Observations",
                 
                 -- Original GPS Status Columns
-                CASE 
-                    WHEN hh_gps_latitude IS NULL OR hh_gps_longitude IS NULL OR hh_gps_altitude IS NULL 
-                    THEN 'Missing' 
-                    ELSE 'Complete' 
+                CASE
+                    WHEN hh_gps_latitude IS NULL OR hh_gps_longitude IS NULL OR hh_gps_altitude IS NULL
+                    THEN 'Missing'
+                    ELSE 'Complete'
                 END AS "Household GPS",
                 
                 CASE 
@@ -296,6 +301,46 @@ def main():
                 st.dataframe(
                     missing_gps_df,
                     column_config={
+                        "ward_name": st.column_config.TextColumn(
+                            "Ward Name",
+                            help="Ward name"
+                        ),
+                        "Village": st.column_config.TextColumn(
+                            "Village",
+                            help="Location name"
+                        ),
+                        "Location Number": st.column_config.NumberColumn(
+                            "Location Number",
+                            help="Location number"
+                        ),
+                        "Household Number": st.column_config.NumberColumn(
+                            "Household Number",
+                            help="Household dwelling number"
+                        ),
+                        "Type of Household": st.column_config.TextColumn(
+                            "Type of Household",
+                            help="Type of household"
+                        ),
+                        "Main source of Drinking Water": st.column_config.TextColumn(
+                            "Main source of Drinking Water",
+                            help="Main source of drinking water"
+                        ),
+                        "cooking and hand washing water source": st.column_config.TextColumn(
+                            "cooking and hand washing water source",
+                            help="Water source for cooking and hand washing"
+                        ),
+                        "Types of Toilet": st.column_config.TextColumn(
+                            "Types of Toilet",
+                            help="Types of toilet facility"
+                        ),
+                        "Data Collector": st.column_config.TextColumn(
+                            "Data Collector",
+                            help="Name of the data collector"
+                        ),
+                        "Quality Checker": st.column_config.TextColumn(
+                            "Quality Checker",
+                            help="Name of the quality checker"
+                        ),
                         "Interview Date/Time": st.column_config.DatetimeColumn(
                             "Interview Date/Time",
                             format="DD/MM/YYYY HH:mm"
@@ -322,7 +367,7 @@ def main():
                     mime="text/csv"
                 )
             else:
-                st.success("No household member count mismatches found!")
+                st.success("No GPS Query found!")
                     
             # Table Check Missing Consent section
             st.markdown("---")
