@@ -176,10 +176,67 @@ def main():
                 location_name AS "Village",
                 location_num AS "Location Number",
                 dwelling_number AS "Household Number",
-                consent_hhses_three_4_1 AS "Type of Household",
-                consent_hhses_three_1_1 AS "Main source of Drinking Water",
-                consent_hhses_three_1_3 AS "cooking and hand washing water source",
-                consent_hhses_three_1_9 AS "Types of Toilet",
+                CASE consent_hhses_three_4_1
+                    WHEN 1 THEN 'Traditional (Bush materials)'
+                    WHEN 2 THEN 'Semi-permanent house'
+                    WHEN 3 THEN 'Permanent house'
+                    ELSE CAST(consent_hhses_three_4_1 AS TEXT)
+                END AS "Type of Household",
+
+                CASE consent_hhses_three_1_1
+                    WHEN 1 THEN 'Piped into dwelling'
+                    WHEN 2 THEN 'Piped into compound, yard or plot'
+                    WHEN 3 THEN 'Piped to neighbour'
+                    WHEN 4 THEN 'Public tap / standpipe'
+                    WHEN 5 THEN 'Tube/drill well'
+                    WHEN 6 THEN 'Protected well'
+                    WHEN 7 THEN 'Unprotected well'
+                    WHEN 8 THEN 'Protected spring'
+                    WHEN 9 THEN 'Unprotected spring'
+                    WHEN 10 THEN 'Surface water (river, stream, dam, lake, pond, or canal)'
+                    WHEN 11 THEN 'Rainwater tank'
+                    WHEN 12 THEN 'Tanker-truck'
+                    WHEN 13 THEN 'Bottled water'
+                    WHEN 14 THEN 'Container'
+                    WHEN 15 THEN 'Other (specify)'
+                    ELSE CAST(consent_hhses_three_1_1 AS TEXT)
+                END AS "Main source of Drinking Water",
+
+                CASE consent_hhses_three_1_3
+                    WHEN 1 THEN 'Piped into dwelling'
+                    WHEN 2 THEN 'Piped into compound, yard or plot'
+                    WHEN 3 THEN 'Piped to neighbour'
+                    WHEN 4 THEN 'Public tap / standpipe'
+                    WHEN 5 THEN 'Tube/drill well'
+                    WHEN 6 THEN 'Protected well'
+                    WHEN 7 THEN 'Unprotected well'
+                    WHEN 8 THEN 'Protected spring'
+                    WHEN 9 THEN 'Unprotected spring'
+                    WHEN 10 THEN 'Surface water (river, stream, dam, lake, pond, or canal)'
+                    WHEN 11 THEN 'Rainwater tank'
+                    WHEN 12 THEN 'Tanker-truck'
+                    WHEN 13 THEN 'Bottled water'
+                    WHEN 14 THEN 'Container'
+                    WHEN 15 THEN 'Other (specify)'
+                    ELSE CAST(consent_hhses_three_1_3 AS TEXT)
+                END AS "cooking and hand washing water source",
+
+                CASE consent_hhses_three_1_9
+                    WHEN 1 THEN 'Flush to piped sewer system'
+                    WHEN 2 THEN 'Flush to septic tank'
+                    WHEN 3 THEN 'Flush to pit (latrine)'
+                    WHEN 4 THEN 'Flush to somewhere else'
+                    WHEN 5 THEN 'Pit latrine with ventilation'
+                    WHEN 6 THEN 'Pit latrine with slab'
+                    WHEN 7 THEN 'Composting toilet'
+                    WHEN 8 THEN 'Pit latrine without slab / Open pit'
+                    WHEN 9 THEN 'Overhung toilet on sea'
+                    WHEN 10 THEN 'Open defecation (No facility/ Bush/ Field)'
+                    WHEN 11 THEN 'Open defecation (No facility/ Sea/River)'
+                    WHEN 12 THEN 'Other (specify)'
+                    WHEN 888 THEN 'Don''t know'
+                    ELSE CAST(consent_hhses_three_1_9 AS TEXT)
+                END AS "Types of Toilet",
                 four_3_1 AS "Data Collector",
                 four_5_1 AS "Quality Checker",
                 interview_date_time_1 AS "Interview Date/Time",
