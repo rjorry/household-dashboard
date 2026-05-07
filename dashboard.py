@@ -775,8 +775,10 @@ def main():
                 # Query for households with multiple heads
                 multiple_heads_query = """
                 SELECT
+                h.ward_name,
                 h.location_name,
                 h.dwelling_number,
+                STRING_AGG(CONCAT(i.indiv_fname, ' ', i.indiv_lname), ', ') AS household_head_name,
                 h.submittername AS submitter,
                 COUNT(*) AS head_count
                 FROM individuals i
@@ -785,13 +787,12 @@ def main():
                 WHERE i.relo_to_hh = 1
                 AND h.agree_yes = 1
                 AND h.pro_name = %s
-                GROUP BY h.key, h.location_name, h.dwelling_number, h.submittername
+                GROUP BY h.key, h.ward_name, h.location_name, h.dwelling_number, h.submittername
                 HAVING COUNT(*) > 1;
                 """
                 
                 # Execute the query
                 multiple_heads_df = pd.read_sql(multiple_heads_query, engine, params=(selected_site,))
-                
                 if not multiple_heads_df.empty:
                     # Count households with multiple heads
                     total_multiple_heads = len(multiple_heads_df)
@@ -807,6 +808,10 @@ def main():
                     st.dataframe(
                         multiple_heads_df,
                         column_config={
+                            "ward_name": st.column_config.TextColumn(
+                                "Ward Name",
+                                help="Ward name"
+                            ),
                             "location_name": st.column_config.TextColumn(
                                 "Village",
                                 help="Location name"
@@ -814,6 +819,10 @@ def main():
                             "dwelling_number": st.column_config.NumberColumn(
                                 "Dwelling Number",
                                 help="Household dwelling number"
+                            ),
+                            "household_head_name": st.column_config.TextColumn(
+                                "Household Head Name",
+                                help="Names of household heads (multiple heads)"
                             ),
                             "submitter": st.column_config.TextColumn(
                                 "Submitter",
