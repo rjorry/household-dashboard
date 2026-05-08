@@ -872,9 +872,11 @@ def main():
             try:
                 # Query for households with no head
                 no_head_query = """
-                SELECT 
+                SELECT
+                h.ward_name,
                 h.location_name,
                 h.dwelling_number,
+                h.consent_respondent_name,
                 h.submittername AS submitter
                 FROM households h
                 LEFT JOIN individuals i ON h.key = i.parent_key AND i.relo_to_hh = 1
