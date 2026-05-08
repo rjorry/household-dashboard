@@ -1153,33 +1153,35 @@ def main():
                 st.error(f"Error in duplicate names check: {e}")
                 st.exception(e)
 
-        # Duplicate Households (Same dwelling_number) section
+        # Individuals with Missing Sex
             st.markdown("---")
             st.subheader("Missing Sex Table")
             
             try:
                 # Query for individuals with missing sex
                 missing_sex_query = """
-                SELECT 
+                SELECT
+                    h.ward_name,
                     h.location_name,
                     h.location_num,
                     h.dwelling_number,
+                    h.consent_respondent_name,
                     h.four_3_1 AS data_collector,
                     h.interview_date_time_1 AS interview_datetime,
                     CONCAT(i.indiv_fname, ' ', i.indiv_lname) AS full_name,
                     i.relo_to_hh AS relationship_to_head,
                     i.sex
                 FROM households h
-                JOIN individuals i 
+                JOIN individuals i
                     ON h.key = i.parent_key
                 WHERE h.agree_yes = 1
                 AND h.pro_name = %s
                 AND i.sex IS NULL;
                 """
-                
+
                 # Execute the query
                 missing_sex_df = pd.read_sql(missing_sex_query, engine, params=(selected_site,))
-                
+
                 if not missing_sex_df.empty:
                     # Count individuals with missing sex
                     total_missing_sex = len(missing_sex_df)
