@@ -1650,6 +1650,114 @@ def main():
             except Exception as e:
                 st.error(f"Error in age checks: {e}")
                 st.exception(e)
+
+            # ==================== Consolidated Data Quality Report ====================
+            st.markdown("---")
+            st.subheader("Consolidated Data Quality Report")
+
+            try:
+                # List of all dataframes with their issue types
+                consolidated_data = []
+
+                # 1. Detailed GPS Data
+                if 'missing_gps_df' in locals() and not missing_gps_df.empty:
+                    df = missing_gps_df.copy()
+                    df['Issue_Type'] = 'Detailed GPS Data'
+                    consolidated_data.append(df)
+
+                # 2. Missing Consent
+                if 'missing_consent_df' in locals() and not missing_consent_df.empty:
+                    df = missing_consent_df.copy()
+                    df['Issue_Type'] = 'Missing Consent'
+                    consolidated_data.append(df)
+
+                # 3. Missing Respondent or HH Member Information
+                if 'missing_respondent_df' in locals() and not missing_respondent_df.empty:
+                    df = missing_respondent_df.copy()
+                    df['Issue_Type'] = 'Missing Respondent or HH Member Information'
+                    consolidated_data.append(df)
+
+                # 4. Households With No Members Recorded
+                if 'no_members_df' in locals() and not no_members_df.empty:
+                    df = no_members_df.copy()
+                    df['Issue_Type'] = 'Households With No Members Recorded'
+                    consolidated_data.append(df)
+
+                # 5. Multiple Household Heads Table
+                if 'multiple_heads_df' in locals() and not multiple_heads_df.empty:
+                    df = multiple_heads_df.copy()
+                    df['Issue_Type'] = 'Multiple Household Heads Table'
+                    consolidated_data.append(df)
+
+                # 6. Households With No Head Table
+                if 'no_head_df' in locals() and not no_head_df.empty:
+                    df = no_head_df.copy()
+                    df['Issue_Type'] = 'Households With No Head Table'
+                    consolidated_data.append(df)
+
+                # 7. Duplicate Households (Same dwelling_number)
+                if 'duplicate_households_df' in locals() and not duplicate_households_df.empty:
+                    df = duplicate_households_df.copy()
+                    df['Issue_Type'] = 'Duplicate Households (Same dwelling_number)'
+                    consolidated_data.append(df)
+
+                # 8. Duplicate Names Table
+                if 'duplicate_names_df' in locals() and not duplicate_names_df.empty:
+                    df = duplicate_names_df.copy()
+                    df['Issue_Type'] = 'Duplicate Names Table'
+                    consolidated_data.append(df)
+
+                # 9. Missing Sex Table
+                if 'missing_sex_df' in locals() and not missing_sex_df.empty:
+                    df = missing_sex_df.copy()
+                    df['Issue_Type'] = 'Missing Sex Table'
+                    consolidated_data.append(df)
+
+                # 10. Missing Age Table
+                if 'missing_age_df' in locals() and not missing_age_df.empty:
+                    df = missing_age_df.copy()
+                    df['Issue_Type'] = 'Missing Age Table'
+                    consolidated_data.append(df)
+
+                # 11. Age Checks Table
+                if 'age_checks_df' in locals() and not age_checks_df.empty:
+                    df = age_checks_df.copy()
+                    df['Issue_Type'] = 'Age Checks Table'
+                    consolidated_data.append(df)
+
+                # Combine all dataframes
+                if consolidated_data:
+                    consolidated_df = pd.concat(consolidated_data, ignore_index=True, sort=False)
+
+                    # Summary
+                    total_issues = len(consolidated_df)
+                    st.markdown("#### Summary")
+                    st.metric("Total Data Quality Issues", f"{total_issues:,}")
+
+                    st.markdown("---")
+                    st.subheader("Detailed Consolidated Report")
+
+                    # Display the table
+                    st.dataframe(
+                        consolidated_df,
+                        hide_index=True,
+                        use_container_width=True
+                    )
+
+                    # Download button
+                    csv_consolidated = consolidated_df.to_csv(index=False).encode('utf-8')
+                    st.download_button(
+                        label="Download Consolidated Data Quality Report (CSV)",
+                        data=csv_consolidated,
+                        file_name=f"consolidated_data_quality_{selected_site.lower()}.csv",
+                        mime="text/csv"
+                    )
+                else:
+                    st.success("No data quality issues found across all checks!")
+
+            except Exception as e:
+                st.error(f"Error creating consolidated report: {e}")
+                st.exception(e)
         except Exception as e:
             st.error(f"Error running GPS quality query: {e}")
 
