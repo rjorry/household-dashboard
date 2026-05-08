@@ -1753,7 +1753,7 @@ def main():
                     )
 
                     # Create Excel file with multiple sheets
-                    output = io.BytesIO()
+                    output = BytesIO()
                     with pd.ExcelWriter(output, engine='openpyxl') as writer:
                         for df in consolidated_data:
                             issue_type = df['Issue_Type'].iloc[0]
@@ -1775,7 +1775,7 @@ def main():
 
             except Exception as e:
                 st.error(f"Error creating consolidated report: {e}")
-                st.exception(e)            
+                st.exception(e)          
         except Exception as e:
             st.error(f"Error running GPS quality query: {e}")
 
