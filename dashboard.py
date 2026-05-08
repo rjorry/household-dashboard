@@ -1725,32 +1725,50 @@ def main():
                     df['Issue_Type'] = 'Age Checks Table'
                     consolidated_data.append(df)
 
-                # Combine all dataframes
+                # Create Excel file with multiple sheets
                 if consolidated_data:
-                    consolidated_df = pd.concat(consolidated_data, ignore_index=True, sort=False)
+                    # Calculate total issues
+                    total_issues = sum(len(df) for df in consolidated_data)
 
                     # Summary
-                    total_issues = len(consolidated_df)
                     st.markdown("#### Summary")
                     st.metric("Total Data Quality Issues", f"{total_issues:,}")
 
                     st.markdown("---")
                     st.subheader("Detailed Consolidated Report")
 
-                    # Display the table
+                    # Display summary table
+                    summary_df = pd.DataFrame([
+                        {'Issue_Type': df['Issue_Type'].iloc[0], 'Count': len(df)}
+                        for df in consolidated_data
+                    ])
                     st.dataframe(
-                        consolidated_df,
+                        summary_df,
+                        column_config={
+                            "Issue_Type": st.column_config.TextColumn("Issue Type"),
+                            "Count": st.column_config.NumberColumn("Count")
+                        },
                         hide_index=True,
                         use_container_width=True
                     )
 
-                    # Download button
-                    csv_consolidated = consolidated_df.to_csv(index=False).encode('utf-8')
+                    # Create Excel file with multiple sheets
+                    output = BytesIO()
+                    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                        for df in consolidated_data:
+                            issue_type = df['Issue_Type'].iloc[0]
+                            # Clean sheet name (remove special characters and limit length)
+                            sheet_name = issue_type.replace('(', '').replace(')', '').replace(' ', '_')[:31]
+                            df.drop('Issue_Type', axis=1).to_excel(writer, sheet_name=sheet_name, index=False)
+
+                    output.seek(0)
+
+                    # Download button for Excel file
                     st.download_button(
-                        label="Download Consolidated Data Quality Report (CSV)",
-                        data=csv_consolidated,
-                        file_name=f"consolidated_data_quality_{selected_site.lower()}.csv",
-                        mime="text/csv"
+                        label="Download Consolidated Data Quality Report (Excel)",
+                        data=output,
+                        file_name=f"consolidated_data_quality_{selected_site.lower()}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     )
                 else:
                     st.success("No data quality issues found across all checks!")
