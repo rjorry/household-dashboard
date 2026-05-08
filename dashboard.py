@@ -696,15 +696,20 @@ def main():
             try:
                 # Query for households with no members recorded
                 no_members_query = """
-                SELECT 
+                SELECT
+                h.ward_name,
                 h.location_name,
                 h.location_num,
                 h.dwelling_number,
+                CONCAT(head.indiv_fname, ' ', head.indiv_lname) AS household_head_name,
                 h.submittername AS submitter_name,
                 h.interview_date_time_1 AS interview_date
                 FROM households h
                 LEFT JOIN individuals i
                 ON h.key = i.parent_key
+                LEFT JOIN individuals head
+                ON h.key = head.parent_key
+                AND head.relo_to_hh = 1
                 WHERE i.key IS NULL
                 AND h.agree_yes = 1
                 AND h.pro_name = %s;
@@ -728,6 +733,10 @@ def main():
                     st.dataframe(
                         no_members_df,
                         column_config={
+                            "ward_name": st.column_config.TextColumn(
+                                "Ward Name",
+                                help="Ward name"
+                            ),
                             "location_name": st.column_config.TextColumn(
                                 "Village",
                                 help="Location name"
@@ -739,6 +748,10 @@ def main():
                             "dwelling_number": st.column_config.NumberColumn(
                                 "Dwelling Number",
                                 help="Household dwelling number"
+                            ),
+                            "household_head_name": st.column_config.TextColumn(
+                                "Household Head Name",
+                                help="Name of the household head"
                             ),
                             "submitter_name": st.column_config.TextColumn(
                                 "Submitter Name",
