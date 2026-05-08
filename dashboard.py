@@ -942,7 +942,7 @@ def main():
             try:
                 duplicate_households_query = """
                 SELECT 
-                    h.key AS household_id,
+                    h.ward_name,
                     h.location_name,
                     h.location_num,
                     h.dwelling_number,
