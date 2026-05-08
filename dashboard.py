@@ -1753,6 +1753,7 @@ def main():
                     )
 
                     # Create Excel file with multiple sheets
+                    from io import BytesIO
                     output = BytesIO()
                     with pd.ExcelWriter(output, engine='openpyxl') as writer:
                         for df in consolidated_data:
