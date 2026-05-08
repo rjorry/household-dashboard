@@ -1772,7 +1772,6 @@ def main():
                     )
                 else:
                     st.success("No data quality issues found across all checks!")
-
             except Exception as e:
                 st.error(f"Error creating consolidated report: {e}")
                 st.exception(e)
