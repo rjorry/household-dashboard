@@ -1153,7 +1153,7 @@ def main():
                 st.error(f"Error in duplicate names check: {e}")
                 st.exception(e)
 
-        # Individuals with Missing Sex
+            # Missing Sex Query
             st.markdown("---")
             st.subheader("Missing Sex Table")
             
@@ -1252,7 +1252,6 @@ def main():
             except Exception as e:
                 st.error(f"Error in missing sex check: {e}")
                 st.exception(e)
-
         
             # Missing Age Table section
             st.markdown("---")
