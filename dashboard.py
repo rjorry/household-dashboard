@@ -32,7 +32,7 @@ def main():
                 submissiondate, interview_date_time_1,
                 agree_yes
             FROM households
-            """
+            """,
             engine
         )
     
