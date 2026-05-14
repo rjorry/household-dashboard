@@ -1495,7 +1495,7 @@ st.markdown("---")
 st.subheader("Age Checks Table")
 
 try:
-    # Query for individuals with age validation issues
+
     age_checks_query = """
     SELECT
         h.ward_name,
@@ -1510,6 +1510,7 @@ try:
         CONCAT(head.indiv_fname, ' ', head.indiv_lname) AS household_head_name,
 
         CONCAT(i.indiv_fname, ' ', i.indiv_lname) AS individual_name,
+
         i.indiv_line_num,
         i.relo_to_hh,
 
@@ -1531,107 +1532,110 @@ try:
 
         CASE
 
-            -- 🚨 Missing DOB and no age information
+            -- 🚨 Missing DOB and no age info
             WHEN (
-                (
-                    i.day_birth IS NULL OR i.day_birth = ''
-                    OR i.month_birth IS NULL OR i.month_birth = ''
-                    OR i.year_birth IS NULL OR i.year_birth = ''
-                )
-                AND (
-                    i.age_year IS NULL
-                    AND i.age_month IS NULL
-                    AND i.age_days IS NULL
-                    AND i.est_age_years IS NULL
-                    AND i.est_age_month IS NULL
-                    AND i.est_age_days IS NULL
-                )
+                i.day_birth IS NULL
+                AND i.month_birth IS NULL
+                AND i.year_birth IS NULL
+                AND i.age_year IS NULL
+                AND i.age_month IS NULL
+                AND i.age_days IS NULL
+                AND i.est_age_years IS NULL
+                AND i.est_age_month IS NULL
+                AND i.est_age_days IS NULL
             )
             THEN 'Missing DOB and age information'
 
-            -- 🚨 Partial DOB entered
+            -- 🚨 Incomplete DOB
             WHEN (
                 (
                     i.day_birth IS NOT NULL
-                    OR i.month_birth IS NOT NULL
-                    OR i.year_birth IS NOT NULL
+                    AND i.month_birth IS NOT NULL
+                    AND i.year_birth IS NULL
                 )
-                AND (
+                OR
+                (
+                    i.day_birth IS NOT NULL
+                    AND i.month_birth IS NULL
+                    AND i.year_birth IS NOT NULL
+                )
+                OR
+                (
                     i.day_birth IS NULL
-                    OR i.month_birth IS NULL
-                    OR i.year_birth IS NULL
+                    AND i.month_birth IS NOT NULL
+                    AND i.year_birth IS NOT NULL
                 )
             )
             THEN 'Incomplete date of birth'
 
-            -- 🚨 Underage household head/spouse
-            WHEN i.relo_to_hh IN (1,2,3)
-                 AND i.age_category = 'mb1a_age_years'
-                 AND (
+            -- 🚨 Underage head/spouse
+            WHEN (
+                i.relo_to_hh IN (1,2,3)
+                AND i.age_category = 'mb1a_age_years'
+                AND (
                     (i.age_year <> 888 AND i.age_year <= 13)
                     OR
                     (
                         i.age_year = 888
                         AND i.est_age_years IS NOT NULL
-                        AND i.est_age_years <> 888
                         AND i.est_age_years <= 13
                     )
-                 )
+                )
+            )
             THEN 'Head/Spouse age ≤ 13 (Invalid)'
 
             -- 🚨 Invalid months
-            WHEN i.age_category = 'mb1a_age_months'
-                 AND (
+            WHEN (
+                i.age_category = 'mb1a_age_months'
+                AND (
                     (i.age_month <> 888 AND i.age_month >= 12)
                     OR
                     (
                         i.age_month = 888
                         AND i.est_age_month IS NOT NULL
-                        AND i.est_age_month <> 888
                         AND i.est_age_month >= 12
                     )
-                 )
+                )
+            )
             THEN 'Age in months should be < 12'
 
             -- 🚨 Invalid days
-            WHEN i.age_category = 'mb1a_age_days'
-                 AND (
+            WHEN (
+                i.age_category = 'mb1a_age_days'
+                AND (
                     (i.age_days <> 888 AND i.age_days >= 31)
                     OR
                     (
                         i.age_days = 888
                         AND i.est_age_days IS NOT NULL
-                        AND i.est_age_days <> 888
                         AND i.est_age_days >= 31
                     )
-                 )
+                )
+            )
             THEN 'Age in days should be < 31'
 
             -- 🚨 Unknown years but no estimate
-            WHEN i.age_category = 'mb1a_age_years'
-                 AND i.age_year = 888
-                 AND (
-                    i.est_age_years IS NULL
-                    OR i.est_age_years = ''
-                 )
+            WHEN (
+                i.age_category = 'mb1a_age_years'
+                AND i.age_year = 888
+                AND i.est_age_years IS NULL
+            )
             THEN 'Unknown years but no estimate'
 
             -- 🚨 Unknown months but no estimate
-            WHEN i.age_category = 'mb1a_age_months'
-                 AND i.age_month = 888
-                 AND (
-                    i.est_age_month IS NULL
-                    OR i.est_age_month = ''
-                 )
+            WHEN (
+                i.age_category = 'mb1a_age_months'
+                AND i.age_month = 888
+                AND i.est_age_month IS NULL
+            )
             THEN 'Unknown months but no estimate'
 
             -- 🚨 Unknown days but no estimate
-            WHEN i.age_category = 'mb1a_age_days'
-                 AND i.age_days = 888
-                 AND (
-                    i.est_age_days IS NULL
-                    OR i.est_age_days = ''
-                 )
+            WHEN (
+                i.age_category = 'mb1a_age_days'
+                AND i.age_days = 888
+                AND i.est_age_days IS NULL
+            )
             THEN 'Unknown days but no estimate'
 
         END AS issue
@@ -1652,36 +1656,39 @@ try:
 
         -- 🚨 Missing DOB and no age info
         (
-            (
-                i.day_birth IS NULL OR i.day_birth = ''
-                OR i.month_birth IS NULL OR i.month_birth = ''
-                OR i.year_birth IS NULL OR i.year_birth = ''
-            )
-            AND (
-                i.age_year IS NULL
-                AND i.age_month IS NULL
-                AND i.age_days IS NULL
-                AND i.est_age_years IS NULL
-                AND i.est_age_month IS NULL
-                AND i.est_age_days IS NULL
-            )
+            i.day_birth IS NULL
+            AND i.month_birth IS NULL
+            AND i.year_birth IS NULL
+            AND i.age_year IS NULL
+            AND i.age_month IS NULL
+            AND i.age_days IS NULL
+            AND i.est_age_years IS NULL
+            AND i.est_age_month IS NULL
+            AND i.est_age_days IS NULL
         )
 
-        -- 🚨 Partial DOB
+        -- 🚨 Incomplete DOB
         OR (
             (
                 i.day_birth IS NOT NULL
-                OR i.month_birth IS NOT NULL
-                OR i.year_birth IS NOT NULL
+                AND i.month_birth IS NOT NULL
+                AND i.year_birth IS NULL
             )
-            AND (
+            OR
+            (
+                i.day_birth IS NOT NULL
+                AND i.month_birth IS NULL
+                AND i.year_birth IS NOT NULL
+            )
+            OR
+            (
                 i.day_birth IS NULL
-                OR i.month_birth IS NULL
-                OR i.year_birth IS NULL
+                AND i.month_birth IS NOT NULL
+                AND i.year_birth IS NOT NULL
             )
         )
 
-        -- 🚨 Underage household head/spouse
+        -- 🚨 Underage head/spouse
         OR (
             i.relo_to_hh IN (1,2,3)
             AND i.age_category = 'mb1a_age_years'
@@ -1691,7 +1698,6 @@ try:
                 (
                     i.age_year = 888
                     AND i.est_age_years IS NOT NULL
-                    AND i.est_age_years <> 888
                     AND i.est_age_years <= 13
                 )
             )
@@ -1706,7 +1712,6 @@ try:
                 (
                     i.age_month = 888
                     AND i.est_age_month IS NOT NULL
-                    AND i.est_age_month <> 888
                     AND i.est_age_month >= 12
                 )
             )
@@ -1721,43 +1726,36 @@ try:
                 (
                     i.age_days = 888
                     AND i.est_age_days IS NOT NULL
-                    AND i.est_age_days <> 888
                     AND i.est_age_days >= 31
                 )
             )
         )
 
-        -- 🚨 Unknown age without estimate
+        -- 🚨 Unknown years but no estimate
         OR (
             i.age_category = 'mb1a_age_years'
             AND i.age_year = 888
-            AND (
-                i.est_age_years IS NULL
-                OR i.est_age_years = ''
-            )
+            AND i.est_age_years IS NULL
         )
 
+        -- 🚨 Unknown months but no estimate
         OR (
             i.age_category = 'mb1a_age_months'
             AND i.age_month = 888
-            AND (
-                i.est_age_month IS NULL
-                OR i.est_age_month = ''
-            )
+            AND i.est_age_month IS NULL
         )
 
+        -- 🚨 Unknown days but no estimate
         OR (
             i.age_category = 'mb1a_age_days'
             AND i.age_days = 888
-            AND (
-                i.est_age_days IS NULL
-                OR i.est_age_days = ''
-            )
+            AND i.est_age_days IS NULL
         )
 
     )
 
     ORDER BY h.location_name, h.dwelling_number;
+
     """
 
     # Execute query
@@ -1772,6 +1770,7 @@ try:
         total_age_checks = len(age_checks_df)
 
         st.markdown("#### Summary")
+
         st.metric(
             "Individuals with Age Validation Issues",
             f"{total_age_checks:,}"
@@ -1786,7 +1785,7 @@ try:
             use_container_width=True
         )
 
-        csv_age_checks = age_checks_df.to_csv(index=False).encode('utf-8')
+        csv_age_checks = age_checks_df.to_csv(index=False).encode("utf-8")
 
         st.download_button(
             label="Download Age Checks Data (CSV)",
