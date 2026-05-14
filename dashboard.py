@@ -1495,7 +1495,6 @@ def main():
             st.subheader("Age Checks Table")
             
             try:
-            
                 age_checks_query = """
                 SELECT
                     h.ward_name,
@@ -1510,121 +1509,95 @@ def main():
                     CONCAT(head.indiv_fname, ' ', head.indiv_lname) AS household_head_name,
             
                     CONCAT(i.indiv_fname, ' ', i.indiv_lname) AS individual_name,
-            
                     i.indiv_line_num,
                     i.relo_to_hh,
             
+                    -- DOB fields
                     i.day_birth,
                     i.month_birth,
                     i.year_birth,
             
+                    -- Age fields
                     i.age_category,
                     i.age_year,
                     i.age_month,
                     i.age_days,
             
+                    -- Estimated ages
                     i.est_age_years,
                     i.est_age_month,
                     i.est_age_days,
             
                     CASE
             
+                        -- 🚨 Missing complete DOB
                         WHEN (
                             i.day_birth IS NULL
-                            AND i.month_birth IS NULL
-                            AND i.year_birth IS NULL
-                            AND i.age_year IS NULL
-                            AND i.age_month IS NULL
-                            AND i.age_days IS NULL
-                            AND i.est_age_years IS NULL
-                            AND i.est_age_month IS NULL
-                            AND i.est_age_days IS NULL
+                            OR i.month_birth IS NULL
+                            OR i.year_birth IS NULL
+                            OR i.day_birth = ''
+                            OR i.month_birth = ''
+                            OR i.year_birth = ''
                         )
-                        THEN 'Missing DOB and age information'
+                        THEN 'Missing Date of Birth'
             
-                        WHEN (
-                            (
-                                i.day_birth IS NOT NULL
-                                AND i.month_birth IS NOT NULL
-                                AND i.year_birth IS NULL
-                            )
-                            OR
-                            (
-                                i.day_birth IS NOT NULL
-                                AND i.month_birth IS NULL
-                                AND i.year_birth IS NOT NULL
-                            )
-                            OR
-                            (
-                                i.day_birth IS NULL
-                                AND i.month_birth IS NOT NULL
-                                AND i.year_birth IS NOT NULL
-                            )
-                        )
-                        THEN 'Incomplete date of birth'
-            
-                        WHEN (
-                            i.relo_to_hh IN (1,2,3)
-                            AND i.age_category = 'mb1a_age_years'
-                            AND (
+                        -- 🚨 Underage household head/spouse
+                        WHEN i.relo_to_hh IN (1,2,3)
+                             AND i.age_category = 'mb1a_age_years'
+                             AND (
                                 (i.age_year <> 888 AND i.age_year <= 13)
                                 OR
                                 (
                                     i.age_year = 888
                                     AND i.est_age_years IS NOT NULL
+                                    AND i.est_age_years <> 888
                                     AND i.est_age_years <= 13
                                 )
-                            )
-                        )
-                        THEN 'Head/Spouse age <= 13'
+                             )
+                        THEN 'Head/Spouse age ≤ 13 (Invalid)'
             
-                        WHEN (
-                            i.age_category = 'mb1a_age_months'
-                            AND (
+                        -- 🚨 Invalid months
+                        WHEN i.age_category = 'mb1a_age_months'
+                             AND (
                                 (i.age_month <> 888 AND i.age_month >= 12)
                                 OR
                                 (
                                     i.age_month = 888
                                     AND i.est_age_month IS NOT NULL
+                                    AND i.est_age_month <> 888
                                     AND i.est_age_month >= 12
                                 )
-                            )
-                        )
-                        THEN 'Age in months should be less than 12'
+                             )
+                        THEN 'Age in months should be < 12'
             
-                        WHEN (
-                            i.age_category = 'mb1a_age_days'
-                            AND (
+                        -- 🚨 Invalid days
+                        WHEN i.age_category = 'mb1a_age_days'
+                             AND (
                                 (i.age_days <> 888 AND i.age_days >= 31)
                                 OR
                                 (
                                     i.age_days = 888
                                     AND i.est_age_days IS NOT NULL
+                                    AND i.est_age_days <> 888
                                     AND i.est_age_days >= 31
                                 )
-                            )
-                        )
-                        THEN 'Age in days should be less than 31'
+                             )
+                        THEN 'Age in days should be < 31'
             
-                        WHEN (
-                            i.age_category = 'mb1a_age_years'
-                            AND i.age_year = 888
-                            AND i.est_age_years IS NULL
-                        )
+                        -- 🚨 Unknown age but no estimate
+                        WHEN i.age_category = 'mb1a_age_years'
+                             AND i.age_year = 888
+                             AND i.est_age_years IS NULL
                         THEN 'Unknown years but no estimate'
             
-                        WHEN (
-                            i.age_category = 'mb1a_age_months'
-                            AND i.age_month = 888
-                            AND i.est_age_month IS NULL
-                        )
+                        WHEN i.age_category = 'mb1a_age_months'
+                             AND i.age_month = 888
+                             AND i.est_age_month IS NULL
                         THEN 'Unknown months but no estimate'
             
-                        WHEN (
-                            i.age_category = 'mb1a_age_days'
-                            AND i.age_days = 888
-                            AND i.est_age_days IS NULL
-                        )
+                        WHEN i.age_category = 'mb1a_age_days'
+                             AND i.age_days = 888
+                             AND i.est_age_days IS NULL
                         THEN 'Unknown days but no estimate'
             
                     END AS issue
@@ -1641,40 +1614,23 @@ def main():
                 WHERE h.agree_yes = 1
                 AND h.pro_name = %s
             
+                -- 🚫 Exclude blank names
+                AND TRIM(COALESCE(i.indiv_fname, '')) <> ''
+                AND TRIM(COALESCE(i.indiv_lname, '')) <> ''
+            
                 AND (
             
+                    -- 🚨 Missing complete DOB
                     (
                         i.day_birth IS NULL
-                        AND i.month_birth IS NULL
-                        AND i.year_birth IS NULL
-                        AND i.age_year IS NULL
-                        AND i.age_month IS NULL
-                        AND i.age_days IS NULL
-                        AND i.est_age_years IS NULL
-                        AND i.est_age_month IS NULL
-                        AND i.est_age_days IS NULL
+                        OR i.month_birth IS NULL
+                        OR i.year_birth IS NULL
+                        OR i.day_birth = ''
+                        OR i.month_birth = ''
+                        OR i.year_birth = ''
                     )
             
-                    OR (
-                        (
-                            i.day_birth IS NOT NULL
-                            AND i.month_birth IS NOT NULL
-                            AND i.year_birth IS NULL
-                        )
-                        OR
-                        (
-                            i.day_birth IS NOT NULL
-                            AND i.month_birth IS NULL
-                            AND i.year_birth IS NOT NULL
-                        )
-                        OR
-                        (
-                            i.day_birth IS NULL
-                            AND i.month_birth IS NOT NULL
-                            AND i.year_birth IS NOT NULL
-                        )
-                    )
-            
+                    -- 🚨 Underage head/spouse
                     OR (
                         i.relo_to_hh IN (1,2,3)
                         AND i.age_category = 'mb1a_age_years'
@@ -1684,11 +1640,13 @@ def main():
                             (
                                 i.age_year = 888
                                 AND i.est_age_years IS NOT NULL
+                                AND i.est_age_years <> 888
                                 AND i.est_age_years <= 13
                             )
                         )
                     )
             
+                    -- 🚨 Invalid months
                     OR (
                         i.age_category = 'mb1a_age_months'
                         AND (
@@ -1697,11 +1655,13 @@ def main():
                             (
                                 i.age_month = 888
                                 AND i.est_age_month IS NOT NULL
+                                AND i.est_age_month <> 888
                                 AND i.est_age_month >= 12
                             )
                         )
                     )
             
+                    -- 🚨 Invalid days
                     OR (
                         i.age_category = 'mb1a_age_days'
                         AND (
@@ -1710,11 +1670,13 @@ def main():
                             (
                                 i.age_days = 888
                                 AND i.est_age_days IS NOT NULL
+                                AND i.est_age_days <> 888
                                 AND i.est_age_days >= 31
                             )
                         )
                     )
             
+                    -- 🚨 Unknown without estimate
                     OR (
                         i.age_category = 'mb1a_age_years'
                         AND i.age_year = 888
@@ -1735,9 +1697,10 @@ def main():
             
                 )
             
-                ORDER BY h.location_name, h.dwelling_number
+                ORDER BY h.location_name, h.dwelling_number;
                 """
             
+                # Execute query
                 age_checks_df = pd.read_sql(
                     age_checks_query,
                     engine,
@@ -1749,7 +1712,6 @@ def main():
                     total_age_checks = len(age_checks_df)
             
                     st.markdown("#### Summary")
-            
                     st.metric(
                         "Individuals with Age Validation Issues",
                         f"{total_age_checks:,}"
@@ -1764,7 +1726,7 @@ def main():
                         use_container_width=True
                     )
             
-                    csv_age_checks = age_checks_df.to_csv(index=False).encode("utf-8")
+                    csv_age_checks = age_checks_df.to_csv(index=False).encode('utf-8')
             
                     st.download_button(
                         label="Download Age Checks Data (CSV)",
@@ -1778,6 +1740,7 @@ def main():
             
             except Exception as e:
                 st.error(f"Error in age checks: {e}")
+                st.exception(e)
 
             # ==================== Consolidated Data Quality Report ====================
             st.markdown("---")
