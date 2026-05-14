@@ -1514,25 +1514,21 @@ try:
         i.indiv_line_num,
         i.relo_to_hh,
 
-        -- DOB fields
         i.day_birth,
         i.month_birth,
         i.year_birth,
 
-        -- Age fields
         i.age_category,
         i.age_year,
         i.age_month,
         i.age_days,
 
-        -- Estimated age fields
         i.est_age_years,
         i.est_age_month,
         i.est_age_days,
 
         CASE
 
-            -- 🚨 Missing DOB and no age info
             WHEN (
                 i.day_birth IS NULL
                 AND i.month_birth IS NULL
@@ -1546,7 +1542,6 @@ try:
             )
             THEN 'Missing DOB and age information'
 
-            -- 🚨 Incomplete DOB
             WHEN (
                 (
                     i.day_birth IS NOT NULL
@@ -1568,7 +1563,6 @@ try:
             )
             THEN 'Incomplete date of birth'
 
-            -- 🚨 Underage head/spouse
             WHEN (
                 i.relo_to_hh IN (1,2,3)
                 AND i.age_category = 'mb1a_age_years'
@@ -1582,9 +1576,8 @@ try:
                     )
                 )
             )
-            THEN 'Head/Spouse age ≤ 13 (Invalid)'
+            THEN 'Head/Spouse age <= 13'
 
-            -- 🚨 Invalid months
             WHEN (
                 i.age_category = 'mb1a_age_months'
                 AND (
@@ -1597,9 +1590,8 @@ try:
                     )
                 )
             )
-            THEN 'Age in months should be < 12'
+            THEN 'Age in months should be less than 12'
 
-            -- 🚨 Invalid days
             WHEN (
                 i.age_category = 'mb1a_age_days'
                 AND (
@@ -1612,9 +1604,8 @@ try:
                     )
                 )
             )
-            THEN 'Age in days should be < 31'
+            THEN 'Age in days should be less than 31'
 
-            -- 🚨 Unknown years but no estimate
             WHEN (
                 i.age_category = 'mb1a_age_years'
                 AND i.age_year = 888
@@ -1622,7 +1613,6 @@ try:
             )
             THEN 'Unknown years but no estimate'
 
-            -- 🚨 Unknown months but no estimate
             WHEN (
                 i.age_category = 'mb1a_age_months'
                 AND i.age_month = 888
@@ -1630,7 +1620,6 @@ try:
             )
             THEN 'Unknown months but no estimate'
 
-            -- 🚨 Unknown days but no estimate
             WHEN (
                 i.age_category = 'mb1a_age_days'
                 AND i.age_days = 888
@@ -1654,7 +1643,6 @@ try:
 
     AND (
 
-        -- 🚨 Missing DOB and no age info
         (
             i.day_birth IS NULL
             AND i.month_birth IS NULL
@@ -1667,7 +1655,6 @@ try:
             AND i.est_age_days IS NULL
         )
 
-        -- 🚨 Incomplete DOB
         OR (
             (
                 i.day_birth IS NOT NULL
@@ -1688,7 +1675,6 @@ try:
             )
         )
 
-        -- 🚨 Underage head/spouse
         OR (
             i.relo_to_hh IN (1,2,3)
             AND i.age_category = 'mb1a_age_years'
@@ -1703,7 +1689,6 @@ try:
             )
         )
 
-        -- 🚨 Invalid month range
         OR (
             i.age_category = 'mb1a_age_months'
             AND (
@@ -1717,7 +1702,6 @@ try:
             )
         )
 
-        -- 🚨 Invalid day range
         OR (
             i.age_category = 'mb1a_age_days'
             AND (
@@ -1731,21 +1715,18 @@ try:
             )
         )
 
-        -- 🚨 Unknown years but no estimate
         OR (
             i.age_category = 'mb1a_age_years'
             AND i.age_year = 888
             AND i.est_age_years IS NULL
         )
 
-        -- 🚨 Unknown months but no estimate
         OR (
             i.age_category = 'mb1a_age_months'
             AND i.age_month = 888
             AND i.est_age_month IS NULL
         )
 
-        -- 🚨 Unknown days but no estimate
         OR (
             i.age_category = 'mb1a_age_days'
             AND i.age_days = 888
@@ -1754,11 +1735,9 @@ try:
 
     )
 
-    ORDER BY h.location_name, h.dwelling_number;
-
+    ORDER BY h.location_name, h.dwelling_number
     """
 
-    # Execute query
     age_checks_df = pd.read_sql(
         age_checks_query,
         engine,
@@ -1799,7 +1778,6 @@ try:
 
 except Exception as e:
     st.error(f"Error in age checks: {e}")
-    st.exception(e)
 
             # ==================== Consolidated Data Quality Report ====================
             st.markdown("---")
