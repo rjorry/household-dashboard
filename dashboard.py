@@ -1530,14 +1530,11 @@ def main():
             
                     CASE
             
-                        -- 🚨 Missing complete DOB
+                        -- 🚨 Missing DOB
                         WHEN (
                             i.day_birth IS NULL
                             OR i.month_birth IS NULL
                             OR i.year_birth IS NULL
-                            OR i.day_birth = ''
-                            OR i.month_birth = ''
-                            OR i.year_birth = ''
                         )
                         THEN 'Missing Date of Birth'
             
@@ -1584,7 +1581,7 @@ def main():
                              )
                         THEN 'Age in days should be < 31'
             
-                        -- 🚨 Unknown age but no estimate
+                        -- 🚨 Unknown age without estimate
                         WHEN i.age_category = 'mb1a_age_years'
                              AND i.age_year = 888
                              AND i.est_age_years IS NULL
@@ -1614,20 +1611,17 @@ def main():
                 WHERE h.agree_yes = 1
                 AND h.pro_name = %s
             
-                -- 🚫 Exclude blank names
+                -- Exclude blank names
                 AND TRIM(COALESCE(i.indiv_fname, '')) <> ''
                 AND TRIM(COALESCE(i.indiv_lname, '')) <> ''
             
                 AND (
             
-                    -- 🚨 Missing complete DOB
+                    -- 🚨 Missing DOB
                     (
                         i.day_birth IS NULL
                         OR i.month_birth IS NULL
                         OR i.year_birth IS NULL
-                        OR i.day_birth = ''
-                        OR i.month_birth = ''
-                        OR i.year_birth = ''
                     )
             
                     -- 🚨 Underage head/spouse
@@ -1700,7 +1694,6 @@ def main():
                 ORDER BY h.location_name, h.dwelling_number;
                 """
             
-                # Execute query
                 age_checks_df = pd.read_sql(
                     age_checks_query,
                     engine,
