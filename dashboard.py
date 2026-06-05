@@ -105,9 +105,28 @@ def main():
             WHERE h.pro_name = %s
             GROUP BY h.pro_name, h.dist_name
             ORDER BY h.dist_name;
+            
+            -- Province-wide totals
+            SELECT 
+                h.pro_name AS Province,
+                'ALL DISTRICTS' AS District,
+                COUNT(DISTINCT h.dwelling_number) AS Total_Households,
+                COUNT(i.indiv_line_num) AS Total_Population,
+                ROUND(COUNT(i.indiv_line_num) / NULLIF(COUNT(DISTINCT h.dwelling_number), 0), 2) AS Avg_HH_Size,
+                ROUND(
+                    (SUM(CASE WHEN i.sex = '01' THEN 1 ELSE 0 END) / 
+                     NULLIF(SUM(CASE WHEN i.sex = '02' THEN 1 ELSE 0 END), 0)) * 100, 2
+                ) AS Sex_Ratio,
+                ROUND(
+                    (SUM(CASE WHEN i.age_year < 15 OR i.age_year >= 65 THEN 1 ELSE 0 END) / 
+                     NULLIF(SUM(CASE WHEN i.age_year BETWEEN 15 AND 64 THEN 1 ELSE 0 END), 0)) * 100, 2
+                ) AS Dependency_Ratio
+            FROM households h
+            LEFT JOIN individuals i ON h.key = i.parent_key
+            WHERE h.pro_name = %s;
             """
             
-            demographic_df = pd.read_sql(demographic_query, engine, params=(selected_site,))
+            demographic_df = pd.read_sql(demographic_query, engine, params=(selected_site, selected_site))
             
             if not demographic_df.empty:
                 # Display the data table
