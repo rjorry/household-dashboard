@@ -83,97 +83,112 @@ def main():
     with tab_report:
         st.header(f"Demographic Analysis – {selected_site.replace('_', ' ').title()}")
         
-        # Run the demographic analysis query
+        # Use the same approach as Overview tab - filter individuals for the selected site
+        site_ind_df = ind_df[ind_df['parent_key'].isin(site_hh_df['key'])]
+        
+        # Load full individual data with demographics for calculations
         try:
-            demographic_query = """
-            SELECT 
-                h.pro_name AS Province,
-                h.dist_name AS District,
-                COUNT(DISTINCT h.dwelling_number) AS Total_Households,
-                COUNT(i.indiv_line_num) AS Total_Population,
-                ROUND(COUNT(i.indiv_line_num) / NULLIF(COUNT(DISTINCT h.dwelling_number), 0), 2) AS Avg_HH_Size,
-                ROUND(
-                    (SUM(CASE WHEN i.sex = '01' THEN 1 ELSE 0 END) / 
-                     NULLIF(SUM(CASE WHEN i.sex = '02' THEN 1 ELSE 0 END), 0)) * 100, 2
-                ) AS Sex_Ratio,
-                ROUND(
-                    (SUM(CASE WHEN i.age_year < 15 OR i.age_year >= 65 THEN 1 ELSE 0 END) / 
-                     NULLIF(SUM(CASE WHEN i.age_year BETWEEN 15 AND 64 THEN 1 ELSE 0 END), 0)) * 100, 2
-                ) AS Dependency_Ratio
-            FROM households h
-            LEFT JOIN individuals i ON h.key = i.parent_key
-            WHERE h.pro_name = %s
-            GROUP BY h.pro_name, h.dist_name
+            ind_full_df = pd.read_sql(
+                """
+                SELECT parent_key, sex, age_year
+                FROM individuals
+                """,
+                engine
+            )
             
-            UNION ALL
+            # Filter individuals for selected site
+            site_ind_full = ind_full_df[ind_full_df['parent_key'].isin(site_hh_df['key'])]
             
-            SELECT 
-                h.pro_name AS Province,
-                'ALL DISTRICTS' AS District,
-                COUNT(DISTINCT h.dwelling_number) AS Total_Households,
-                COUNT(i.indiv_line_num) AS Total_Population,
-                ROUND(COUNT(i.indiv_line_num) / NULLIF(COUNT(DISTINCT h.dwelling_number), 0), 2) AS Avg_HH_Size,
-                ROUND(
-                    (SUM(CASE WHEN i.sex = '01' THEN 1 ELSE 0 END) / 
-                     NULLIF(SUM(CASE WHEN i.sex = '02' THEN 1 ELSE 0 END), 0)) * 100, 2
-                ) AS Sex_Ratio,
-                ROUND(
-                    (SUM(CASE WHEN i.age_year < 15 OR i.age_year >= 65 THEN 1 ELSE 0 END) / 
-                     NULLIF(SUM(CASE WHEN i.age_year BETWEEN 15 AND 64 THEN 1 ELSE 0 END), 0)) * 100, 2
-                ) AS Dependency_Ratio
-            FROM households h
-            LEFT JOIN individuals i ON h.key = i.parent_key
-            WHERE h.pro_name = %s
-            GROUP BY h.pro_name
-            ORDER BY District;
-            """
+            # Calculate demographic indicators
+            total_hh = len(site_hh_df)
+            total_pop = len(site_ind_full)
+            avg_hh_size = round(total_pop / total_hh, 2) if total_hh > 0 else 0
             
-            # First, run diagnostic queries to understand the data
-            st.write("Diagnostic Data:")
+            # Sex ratio (males per 100 females)
+            males = (site_ind_full['sex'] == '01').sum()
+            females = (site_ind_full['sex'] == '02').sum()
+            sex_ratio = round((males / females * 100), 2) if females > 0 else 0
             
-            # Check total households
-            hh_query = "SELECT COUNT(DISTINCT dwelling_number) as total_hh FROM households WHERE pro_name = %s"
-            hh_df = pd.read_sql(hh_query, engine, params=(selected_site,))
-            st.write(f"Total Households: {hh_df.iloc[0]['total_hh']}")
+            # Dependency ratio
+            dependents = ((site_ind_full['age_year'] < 15) | (site_ind_full['age_year'] >= 65)).sum()
+            working_age = ((site_ind_full['age_year'] >= 15) & (site_ind_full['age_year'] <= 64)).sum()
+            dependency_ratio = round((dependents / working_age * 100), 2) if working_age > 0 else 0
             
-            # Check total individuals
-            ind_query = "SELECT COUNT(*) as total_ind FROM households h JOIN individuals i ON h.key = i.parent_key WHERE h.pro_name = %s"
-            ind_df = pd.read_sql(ind_query, engine, params=(selected_site,))
-            st.write(f"Total Individuals: {ind_df.iloc[0]['total_ind']}")
+            # Display site-wide summary
+            st.subheader("Site-Wide Demographic Summary")
+            col1, col2, col3, col4, col5 = st.columns(5)
+            with col1:
+                st.metric("Total Households", f"{total_hh:,}")
+            with col2:
+                st.metric("Total Population", f"{total_pop:,}")
+            with col3:
+                st.metric("Avg HH Size", f"{avg_hh_size:.2f}")
+            with col4:
+                st.metric("Sex Ratio", f"{sex_ratio:.2f}")
+            with col5:
+                st.metric("Dependency Ratio", f"{dependency_ratio:.2f}%")
             
-            # Check sex distribution
-            sex_query = "SELECT sex, COUNT(*) as count FROM individuals i JOIN households h ON i.parent_key = h.key WHERE h.pro_name = %s GROUP BY sex"
-            sex_df = pd.read_sql(sex_query, engine, params=(selected_site,))
-            st.write("Sex Distribution:", sex_df)
+            # Key indicators explanation
+            st.markdown("---")
+            st.subheader("Key Indicators Captured")
+            st.markdown("""
+            **Total Population & Households:** Provides the absolute scale of the surveillance area for administrative planning.
             
-            # Check age distribution
-            age_query = """
-            SELECT 
-                COUNT(*) as total,
-                COUNT(CASE WHEN age_year < 15 THEN 1 END) as under_15,
-                COUNT(CASE WHEN age_year BETWEEN 15 AND 64 THEN 1 END) as working_age,
-                COUNT(CASE WHEN age_year >= 65 THEN 1 END) as over_65,
-                COUNT(CASE WHEN age_year IS NULL THEN 1 END) as null_age
-            FROM individuals i JOIN households h ON i.parent_key = h.key WHERE h.pro_name = %s
-            """
-            age_df = pd.read_sql(age_query, engine, params=(selected_site,))
-            st.write("Age Distribution:", age_df)
+            **Average Household Size:** Measures living density; high values often correlate with the "Overcrowding Rate" found in Domain 4.
             
-            demographic_df = pd.read_sql(demographic_query, engine, params=(selected_site, selected_site))
+            **Sex Ratio:** Identifies gender imbalances in specific districts, which may be driven by migration for work (e.g., mining or plantations).
             
-            if not demographic_df.empty:
+            **Dependency Ratio:** This is a critical indicator of economic burden. A high ratio suggests that a small number of working-age adults (15–64) are supporting a large number of children and elderly, signaling a need for increased social services and schools.
+            """)
+            
+            # District-level breakdown
+            st.markdown("---")
+            st.subheader("Demographic Indicators by District")
+            
+            # Group by district and calculate metrics
+            district_data = []
+            for district in site_hh_df['dist_name'].unique():
+                if pd.notna(district):
+                    district_hh = site_hh_df[site_hh_df['dist_name'] == district]
+                    district_hh_keys = district_hh['key']
+                    district_ind = site_ind_full[site_ind_full['parent_key'].isin(district_hh_keys)]
+                    
+                    d_hh = len(district_hh)
+                    d_pop = len(district_ind)
+                    d_avg = round(d_pop / d_hh, 2) if d_hh > 0 else 0
+                    
+                    d_males = (district_ind['sex'] == '01').sum()
+                    d_females = (district_ind['sex'] == '02').sum()
+                    d_sex_ratio = round((d_males / d_females * 100), 2) if d_females > 0 else 0
+                    
+                    d_dependents = ((district_ind['age_year'] < 15) | (district_ind['age_year'] >= 65)).sum()
+                    d_working = ((district_ind['age_year'] >= 15) & (district_ind['age_year'] <= 64)).sum()
+                    d_dep_ratio = round((d_dependents / d_working * 100), 2) if d_working > 0 else 0
+                    
+                    district_data.append({
+                        'Province': selected_site.replace('_', ' ').title(),
+                        'District': district,
+                        'Total_Households': d_hh,
+                        'Total_Population': d_pop,
+                        'Avg_HH_Size': d_avg,
+                        'Sex_Ratio': d_sex_ratio,
+                        'Dependency_Ratio': d_dep_ratio
+                    })
+            
+            if district_data:
+                demographic_df = pd.DataFrame(district_data)
+                
                 # Display the data table
-                st.subheader("Demographic Indicators by District")
                 st.dataframe(
                     demographic_df,
                     column_config={
-                        "province": st.column_config.TextColumn("Province"),
-                        "district": st.column_config.TextColumn("District"),
-                        "total_households": st.column_config.NumberColumn("Total Households", format="%d"),
-                        "total_population": st.column_config.NumberColumn("Total Population", format="%d"),
-                        "avg_hh_size": st.column_config.NumberColumn("Avg HH Size", format="%.2f"),
-                        "sex_ratio": st.column_config.NumberColumn("Sex Ratio (Males per 100 Females)", format="%.2f"),
-                        "dependency_ratio": st.column_config.NumberColumn("Dependency Ratio (%)", format="%.2f")
+                        "Province": st.column_config.TextColumn("Province"),
+                        "District": st.column_config.TextColumn("District"),
+                        "Total_Households": st.column_config.NumberColumn("Total Households", format="%d"),
+                        "Total_Population": st.column_config.NumberColumn("Total Population", format="%d"),
+                        "Avg_HH_Size": st.column_config.NumberColumn("Avg HH Size", format="%.2f"),
+                        "Sex_Ratio": st.column_config.NumberColumn("Sex Ratio (Males per 100 Females)", format="%.2f"),
+                        "Dependency_Ratio": st.column_config.NumberColumn("Dependency Ratio (%)", format="%.2f")
                     },
                     hide_index=True,
                     use_container_width=True
@@ -187,37 +202,8 @@ def main():
                     file_name=f"demographic_analysis_{selected_site.lower()}.csv",
                     mime="text/csv"
                 )
-                
-                # Display key indicators explanation
-                st.markdown("---")
-                st.subheader("Key Indicators Captured")
-                st.markdown("""
-                **Total Population & Households:** Provides the absolute scale of the surveillance area for administrative planning.
-                
-                **Average Household Size:** Measures living density; high values often correlate with the "Overcrowding Rate" found in Domain 4.
-                
-                **Sex Ratio:** Identifies gender imbalances in specific districts, which may be driven by migration for work (e.g., mining or plantations).
-                
-                **Dependency Ratio:** This is a critical indicator of economic burden. A high ratio suggests that a small number of working-age adults (15–64) are supporting a large number of children and elderly, signaling a need for increased social services and schools.
-                """)
-                
-                # Calculate and display site-wide summary
-                st.markdown("---")
-                st.subheader("Site-Wide Summary")
-                total_hh = demographic_df['total_households'].sum()
-                total_pop = demographic_df['total_population'].sum()
-                avg_hh_size = total_pop / total_hh if total_hh > 0 else 0
-                
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    st.metric("Total Households", f"{total_hh:,}")
-                with col2:
-                    st.metric("Total Population", f"{total_pop:,}")
-                with col3:
-                    st.metric("Average HH Size", f"{avg_hh_size:.2f}")
-                    
             else:
-                st.info("No demographic data available for this site.")
+                st.info("No district data available for this site.")
                 
         except Exception as e:
             st.error(f"Error running demographic analysis: {e}")
