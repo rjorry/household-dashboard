@@ -104,9 +104,9 @@ def main():
             LEFT JOIN individuals i ON h.key = i.parent_key
             WHERE h.pro_name = %s
             GROUP BY h.pro_name, h.dist_name
-            ORDER BY h.dist_name;
             
-            -- Province-wide totals
+            UNION ALL
+            
             SELECT 
                 h.pro_name AS Province,
                 'ALL DISTRICTS' AS District,
@@ -123,7 +123,9 @@ def main():
                 ) AS Dependency_Ratio
             FROM households h
             LEFT JOIN individuals i ON h.key = i.parent_key
-            WHERE h.pro_name = %s;
+            WHERE h.pro_name = %s
+            GROUP BY h.pro_name
+            ORDER BY District;
             """
             
             demographic_df = pd.read_sql(demographic_query, engine, params=(selected_site, selected_site))
