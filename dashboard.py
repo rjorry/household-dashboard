@@ -79,7 +79,97 @@ def main():
         "Overview", "Sector Analysis", "Data Collectors", "GPS Mapping", "Data Quality", "Report"
     ])
 
-    # <-- NEW "Report" tab added here
+    # ==================== TAB: Report ====================
+    with tab_report:
+        st.header(f"Demographic Analysis – {selected_site.replace('_', ' ').title()}")
+        
+        # Run the demographic analysis query
+        try:
+            demographic_query = """
+            SELECT 
+                h.pro_name AS Province,
+                h.dist_name AS District,
+                COUNT(DISTINCT h.dwelling_number) AS Total_Households,
+                COUNT(i.indiv_line_num) AS Total_Population,
+                ROUND(AVG(h.total_hh_members), 2) AS Avg_HH_Size,
+                ROUND(
+                    (SUM(CASE WHEN i.sex = '01' THEN 1 ELSE 0 END) / 
+                     NULLIF(SUM(CASE WHEN i.sex = '02' THEN 1 ELSE 0 END), 0)) * 100, 2
+                ) AS Sex_Ratio,
+                ROUND(
+                    (SUM(CASE WHEN i.age_year < 15 OR i.age_year >= 65 THEN 1 ELSE 0 END) / 
+                     NULLIF(SUM(CASE WHEN i.age_year BETWEEN 15 AND 64 THEN 1 ELSE 0 END), 0)) * 100, 2
+                ) AS Dependency_Ratio
+            FROM households h
+            LEFT JOIN individuals i ON h.dwelling_number = i.dwelling_number
+            WHERE h.pro_name = %s
+            GROUP BY h.pro_name, h.dist_name
+            ORDER BY h.dist_name;
+            """
+            
+            demographic_df = pd.read_sql(demographic_query, engine, params=(selected_site,))
+            
+            if not demographic_df.empty:
+                # Display the data table
+                st.subheader("Demographic Indicators by District")
+                st.dataframe(
+                    demographic_df,
+                    column_config={
+                        "Province": st.column_config.TextColumn("Province"),
+                        "District": st.column_config.TextColumn("District"),
+                        "Total_Households": st.column_config.NumberColumn("Total Households", format="%d"),
+                        "Total_Population": st.column_config.NumberColumn("Total Population", format="%d"),
+                        "Avg_HH_Size": st.column_config.NumberColumn("Avg HH Size", format="%.2f"),
+                        "Sex_Ratio": st.column_config.NumberColumn("Sex Ratio (Males per 100 Females)", format="%.2f"),
+                        "Dependency_Ratio": st.column_config.NumberColumn("Dependency Ratio (%)", format="%.2f")
+                    },
+                    hide_index=True,
+                    use_container_width=True
+                )
+                
+                # Add download button
+                csv_demo = demographic_df.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="Download Demographic Analysis (CSV)",
+                    data=csv_demo,
+                    file_name=f"demographic_analysis_{selected_site.lower()}.csv",
+                    mime="text/csv"
+                )
+                
+                # Display key indicators explanation
+                st.markdown("---")
+                st.subheader("Key Indicators Captured")
+                st.markdown("""
+                **Total Population & Households:** Provides the absolute scale of the surveillance area for administrative planning.
+                
+                **Average Household Size:** Measures living density; high values often correlate with the "Overcrowding Rate" found in Domain 4.
+                
+                **Sex Ratio:** Identifies gender imbalances in specific districts, which may be driven by migration for work (e.g., mining or plantations).
+                
+                **Dependency Ratio:** This is a critical indicator of economic burden. A high ratio suggests that a small number of working-age adults (15–64) are supporting a large number of children and elderly, signaling a need for increased social services and schools.
+                """)
+                
+                # Calculate and display site-wide summary
+                st.markdown("---")
+                st.subheader("Site-Wide Summary")
+                total_hh = demographic_df['Total_Households'].sum()
+                total_pop = demographic_df['Total_Population'].sum()
+                avg_hh_size = total_pop / total_hh if total_hh > 0 else 0
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Total Households", f"{total_hh:,}")
+                with col2:
+                    st.metric("Total Population", f"{total_pop:,}")
+                with col3:
+                    st.metric("Average HH Size", f"{avg_hh_size:.2f}")
+                    
+            else:
+                st.info("No demographic data available for this site.")
+                
+        except Exception as e:
+            st.error(f"Error running demographic analysis: {e}")
+            st.exception(e)
 
     # ==================== TAB 1: Overview ====================
     with tab1:
