@@ -128,6 +128,34 @@ def main():
             ORDER BY District;
             """
             
+            # First, run diagnostic queries to understand the data
+            diagnostic_query = """
+            -- Check total households
+            SELECT COUNT(DISTINCT dwelling_number) as total_hh FROM households WHERE pro_name = %s;
+            
+            -- Check total individuals
+            SELECT COUNT(*) as total_ind FROM households h JOIN individuals i ON h.key = i.parent_key WHERE h.pro_name = %s;
+            
+            -- Check sex distribution
+            SELECT sex, COUNT(*) as count FROM individuals i JOIN households h ON i.parent_key = h.key WHERE h.pro_name = %s GROUP BY sex;
+            
+            -- Check age distribution
+            SELECT 
+                COUNT(*) as total,
+                COUNT(CASE WHEN age_year < 15 THEN 1 END) as under_15,
+                COUNT(CASE WHEN age_year BETWEEN 15 AND 64 THEN 1 END) as working_age,
+                COUNT(CASE WHEN age_year >= 65 THEN 1 END) as over_65,
+                COUNT(CASE WHEN age_year IS NULL THEN 1 END) as null_age
+            FROM individuals i JOIN households h ON i.parent_key = h.key WHERE h.pro_name = %s;
+            """
+            
+            diagnostic_df = pd.read_sql(diagnostic_query, engine, params=(selected_site, selected_site, selected_site, selected_site))
+            st.write("Diagnostic Data:")
+            st.write(f"Total Households: {diagnostic_df.iloc[0]['total_hh']}")
+            st.write(f"Total Individuals: {diagnostic_df.iloc[1]['total_ind']}")
+            st.write("Sex Distribution:", diagnostic_df.iloc[2])
+            st.write("Age Distribution:", diagnostic_df.iloc[3])
+            
             demographic_df = pd.read_sql(demographic_query, engine, params=(selected_site, selected_site))
             
             if not demographic_df.empty:
