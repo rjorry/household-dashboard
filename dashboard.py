@@ -79,7 +79,7 @@ def main():
         "Overview", "Sector Analysis", "Data Collectors", "GPS Mapping", "Data Quality", "Report"
     ])
 
-     # ==================== TAB: Report ====================
+    # ==================== TAB: Report ====================
     with tab_report:
         st.header(f"Demographic Analysis – {selected_site.replace('_', ' ').title()}")
         
@@ -109,22 +109,19 @@ def main():
             
             demographic_df = pd.read_sql(demographic_query, engine, params=(selected_site,))
             
-            st.write("Debug - Columns in demographic_df:", demographic_df.columns.tolist())
-            st.write("Debug - demographic_df:", demographic_df)
-            
             if not demographic_df.empty:
                 # Display the data table
                 st.subheader("Demographic Indicators by District")
                 st.dataframe(
                     demographic_df,
                     column_config={
-                        "Province": st.column_config.TextColumn("Province"),
-                        "District": st.column_config.TextColumn("District"),
-                        "Total_Households": st.column_config.NumberColumn("Total Households", format="%d"),
-                        "Total_Population": st.column_config.NumberColumn("Total Population", format="%d"),
-                        "Avg_HH_Size": st.column_config.NumberColumn("Avg HH Size", format="%.2f"),
-                        "Sex_Ratio": st.column_config.NumberColumn("Sex Ratio (Males per 100 Females)", format="%.2f"),
-                        "Dependency_Ratio": st.column_config.NumberColumn("Dependency Ratio (%)", format="%.2f")
+                        "province": st.column_config.TextColumn("Province"),
+                        "district": st.column_config.TextColumn("District"),
+                        "total_households": st.column_config.NumberColumn("Total Households", format="%d"),
+                        "total_population": st.column_config.NumberColumn("Total Population", format="%d"),
+                        "avg_hh_size": st.column_config.NumberColumn("Avg HH Size", format="%.2f"),
+                        "sex_ratio": st.column_config.NumberColumn("Sex Ratio (Males per 100 Females)", format="%.2f"),
+                        "dependency_ratio": st.column_config.NumberColumn("Dependency Ratio (%)", format="%.2f")
                     },
                     hide_index=True,
                     use_container_width=True
@@ -155,8 +152,8 @@ def main():
                 # Calculate and display site-wide summary
                 st.markdown("---")
                 st.subheader("Site-Wide Summary")
-                total_hh = demographic_df['Total_Households'].sum()
-                total_pop = demographic_df['Total_Population'].sum()
+                total_hh = demographic_df['total_households'].sum()
+                total_pop = demographic_df['total_population'].sum()
                 avg_hh_size = total_pop / total_hh if total_hh > 0 else 0
                 
                 col1, col2, col3 = st.columns(3)
