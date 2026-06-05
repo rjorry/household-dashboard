@@ -79,7 +79,7 @@ def main():
         "Overview", "Sector Analysis", "Data Collectors", "GPS Mapping", "Data Quality", "Report"
     ])
 
-    # ==================== TAB: Report ====================
+     # ==================== TAB: Report ====================
     with tab_report:
         st.header(f"Demographic Analysis – {selected_site.replace('_', ' ').title()}")
         
@@ -108,6 +108,9 @@ def main():
             """
             
             demographic_df = pd.read_sql(demographic_query, engine, params=(selected_site,))
+            
+            st.write("Debug - Columns in demographic_df:", demographic_df.columns.tolist())
+            st.write("Debug - demographic_df:", demographic_df)
             
             if not demographic_df.empty:
                 # Display the data table
