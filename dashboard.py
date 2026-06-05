@@ -91,7 +91,7 @@ def main():
                 h.dist_name AS District,
                 COUNT(DISTINCT h.dwelling_number) AS Total_Households,
                 COUNT(i.indiv_line_num) AS Total_Population,
-                ROUND(AVG(h.total_hh_members), 2) AS Avg_HH_Size,
+                ROUND(COUNT(i.indiv_line_num) / NULLIF(COUNT(DISTINCT h.dwelling_number), 0), 2) AS Avg_HH_Size,
                 ROUND(
                     (SUM(CASE WHEN i.sex = '01' THEN 1 ELSE 0 END) / 
                      NULLIF(SUM(CASE WHEN i.sex = '02' THEN 1 ELSE 0 END), 0)) * 100, 2
