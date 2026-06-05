@@ -101,7 +101,7 @@ def main():
                      NULLIF(SUM(CASE WHEN i.age_year BETWEEN 15 AND 64 THEN 1 ELSE 0 END), 0)) * 100, 2
                 ) AS Dependency_Ratio
             FROM households h
-            LEFT JOIN individuals i ON h.dwelling_number = i.dwelling_number
+            LEFT JOIN individuals i ON h.key = i.parent_key
             WHERE h.pro_name = %s
             GROUP BY h.pro_name, h.dist_name
             ORDER BY h.dist_name;
