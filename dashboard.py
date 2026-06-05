@@ -129,32 +129,35 @@ def main():
             """
             
             # First, run diagnostic queries to understand the data
-            diagnostic_query = """
-            -- Check total households
-            SELECT COUNT(DISTINCT dwelling_number) as total_hh FROM households WHERE pro_name = %s;
+            st.write("Diagnostic Data:")
             
-            -- Check total individuals
-            SELECT COUNT(*) as total_ind FROM households h JOIN individuals i ON h.key = i.parent_key WHERE h.pro_name = %s;
+            # Check total households
+            hh_query = "SELECT COUNT(DISTINCT dwelling_number) as total_hh FROM households WHERE pro_name = %s"
+            hh_df = pd.read_sql(hh_query, engine, params=(selected_site,))
+            st.write(f"Total Households: {hh_df.iloc[0]['total_hh']}")
             
-            -- Check sex distribution
-            SELECT sex, COUNT(*) as count FROM individuals i JOIN households h ON i.parent_key = h.key WHERE h.pro_name = %s GROUP BY sex;
+            # Check total individuals
+            ind_query = "SELECT COUNT(*) as total_ind FROM households h JOIN individuals i ON h.key = i.parent_key WHERE h.pro_name = %s"
+            ind_df = pd.read_sql(ind_query, engine, params=(selected_site,))
+            st.write(f"Total Individuals: {ind_df.iloc[0]['total_ind']}")
             
-            -- Check age distribution
+            # Check sex distribution
+            sex_query = "SELECT sex, COUNT(*) as count FROM individuals i JOIN households h ON i.parent_key = h.key WHERE h.pro_name = %s GROUP BY sex"
+            sex_df = pd.read_sql(sex_query, engine, params=(selected_site,))
+            st.write("Sex Distribution:", sex_df)
+            
+            # Check age distribution
+            age_query = """
             SELECT 
                 COUNT(*) as total,
                 COUNT(CASE WHEN age_year < 15 THEN 1 END) as under_15,
                 COUNT(CASE WHEN age_year BETWEEN 15 AND 64 THEN 1 END) as working_age,
                 COUNT(CASE WHEN age_year >= 65 THEN 1 END) as over_65,
                 COUNT(CASE WHEN age_year IS NULL THEN 1 END) as null_age
-            FROM individuals i JOIN households h ON i.parent_key = h.key WHERE h.pro_name = %s;
+            FROM individuals i JOIN households h ON i.parent_key = h.key WHERE h.pro_name = %s
             """
-            
-            diagnostic_df = pd.read_sql(diagnostic_query, engine, params=(selected_site, selected_site, selected_site, selected_site))
-            st.write("Diagnostic Data:")
-            st.write(f"Total Households: {diagnostic_df.iloc[0]['total_hh']}")
-            st.write(f"Total Individuals: {diagnostic_df.iloc[1]['total_ind']}")
-            st.write("Sex Distribution:", diagnostic_df.iloc[2])
-            st.write("Age Distribution:", diagnostic_df.iloc[3])
+            age_df = pd.read_sql(age_query, engine, params=(selected_site,))
+            st.write("Age Distribution:", age_df)
             
             demographic_df = pd.read_sql(demographic_query, engine, params=(selected_site, selected_site))
             
