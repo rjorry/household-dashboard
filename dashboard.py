@@ -255,6 +255,25 @@ def main():
                 use_container_width=True
             )
 
+        st.markdown("---")
+        st.subheader("Data Collected by Ward")
+        if 'ward_name' in site_hh_df.columns:
+            ward_counts = site_hh_df['ward_name'].value_counts().reset_index()
+            ward_counts.columns = ['Ward', 'Households']
+
+            fig_ward = px.bar(ward_counts, x='Ward', y='Households', color='Ward',
+                              title="Households Collected per Ward")
+            st.plotly_chart(fig_ward, use_container_width=True)
+
+            st.dataframe(
+                ward_counts.sort_values('Households', ascending=False),
+                column_config={
+                    'Ward': st.column_config.TextColumn("Ward"),
+                    'Households': st.column_config.NumberColumn("Households", format='%d')
+                },
+                hide_index=True,
+                use_container_width=True
+            )
     # ==================== TAB 2: Sector Analysis ====================
     with tab2:
         st.header(f"Sector Analysis – {selected_site.replace('_', ' ').title()}")
@@ -282,7 +301,7 @@ def main():
         if 'four_3_1' in site_hh_df.columns:
             collector_431 = site_hh_df['four_3_1'].value_counts().head(23).reset_index()
             fig_431 = px.bar(collector_431, x='four_3_1', y='count', color='four_3_1',
-                             title="Households per Data Collector (four_3_1)")
+                             title="Households per Data Collector (Interviewer Name)")
             st.plotly_chart(fig_431, use_container_width=True)
             st.dataframe(collector_431, hide_index=True, use_container_width=True)
 
