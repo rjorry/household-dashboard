@@ -274,9 +274,17 @@ def main():
         if 'submittername' in site_hh_df.columns:
             collector = site_hh_df['submittername'].value_counts().head(23).reset_index()
             fig = px.bar(collector, x='submittername', y='count', color='submittername',
-                         title="Households per Data Collector")
+                         title="Households per Data Collector (submittername)")
             st.plotly_chart(fig, use_container_width=True)
             st.dataframe(collector, hide_index=True, use_container_width=True)
+
+        st.markdown("---")
+        if 'four_3_1' in site_hh_df.columns:
+            collector_431 = site_hh_df['four_3_1'].value_counts().head(23).reset_index()
+            fig_431 = px.bar(collector_431, x='four_3_1', y='count', color='four_3_1',
+                             title="Households per Data Collector (four_3_1)")
+            st.plotly_chart(fig_431, use_container_width=True)
+            st.dataframe(collector_431, hide_index=True, use_container_width=True)
 
     # ==================== TAB 4: GPS Mapping ====================
     with tab4:
