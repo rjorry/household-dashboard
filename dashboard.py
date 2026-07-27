@@ -314,7 +314,7 @@ def main():
                 x='four_3_1',
                 y='count',
                 color='four_3_1',
-                title="Households per Data Collector (four_3_1)"
+                title="Households per Data Collector (Interviews Name)"
             )
             st.plotly_chart(fig_431, use_container_width=True)
             st.dataframe(collector_431, hide_index=True, use_container_width=True)
