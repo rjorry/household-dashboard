@@ -101,6 +101,10 @@ def main():
                 engine
             )
             
+            # Convert age columns to numeric
+            ind_full_df['age_year'] = pd.to_numeric(ind_full_df['age_year'], errors='coerce')
+            ind_full_df['est_age_years'] = pd.to_numeric(ind_full_df['est_age_years'], errors='coerce')
+            
             # Use age_year if available, otherwise fall back to est_age_years
             ind_full_df['final_age'] = ind_full_df['age_year'].fillna(ind_full_df['est_age_years'])
             
@@ -113,6 +117,9 @@ def main():
                 if pd.isna(val):
                     return '99'
                 s = str(val).strip().upper()
+                # Remove trailing .0 from floats
+                if s.endswith('.0'):
+                    s = s[:-2]
                 if s in ('01', '1', 'M', 'MALE', 'BOY', 'M.'):
                     return '01'
                 elif s in ('02', '2', 'F', 'FEMALE', 'GIRL', 'F.'):
@@ -157,6 +164,14 @@ def main():
             # Population Pyramid
             st.markdown("---")
             st.subheader("Age-Sex Distribution (Population Pyramid)")
+            
+            # Temporary diagnostics
+            st.write(f"Total individuals for site: {len(site_ind_full):,}")
+            st.write(f"With valid age: {site_ind_full['final_age'].notna().sum():,}")
+            st.write(f"With valid sex (01/02): {(site_ind_full['sex_norm'].isin(['01','02'])).sum():,}")
+            st.write(f"Unique sex values: {site_ind_full['sex'].dropna().unique()[:20]}")
+            st.write(f"Sex value counts: {site_ind_full['sex'].value_counts().head(20).to_dict()}")
+            st.write(site_ind_full[['parent_key', 'indiv_line_num', 'sex', 'sex_norm', 'age_year', 'est_age_years', 'final_age']].head(10))
             
             if not site_ind_full.empty:
                 # Create 5-year age cohorts for individuals with valid age and sex
