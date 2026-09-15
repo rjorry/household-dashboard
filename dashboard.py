@@ -325,7 +325,10 @@ def main():
             SELECT 
                 h.pro_name, h.dist_name, h.sector,
                 i.indiv_line_num, i.sex, i.age_year, i.est_age_years,
-                i.currently_school, i.highest_level_edu, i.main_reason_not_sch, i.reason_not_furth_edu
+                i.edu_info_currently_school AS currently_school,
+                i.edu_info_highest_level_edu AS highest_level_edu,
+                i.edu_info_main_reason_not_sch AS main_reason_not_sch,
+                i.edu_info_reason_not_furth_edu AS reason_not_furth_edu
             FROM households h
             LEFT JOIN individuals i ON h.key = i.parent_key
             WHERE h.pro_name = %s
