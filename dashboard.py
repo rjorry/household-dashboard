@@ -182,7 +182,7 @@ def main():
                     male_counts = pyramid_data[pyramid_data['sex_norm'] == '01'].set_index('age_group')['count'].reindex(labels).fillna(0)
                     female_counts = pyramid_data[pyramid_data['sex_norm'] == '02'].set_index('age_group')['count'].reindex(labels).fillna(0)
                     
-                    # Dynamic x-axis ticks based on max count
+                    # Build pyramid chart data in long form
                     max_count = max(male_counts.max(), female_counts.max())
                     step = round(max_count / 2 / 100) * 100 if max_count > 200 else round(max_count / 2 / 10) * 10
                     if step == 0:
@@ -191,32 +191,28 @@ def main():
                     tickvals = [-top, -step, 0, step, top]
                     ticktext = [f"{top:,}", f"{step:,}", "0", f"{step:,}", f"{top:,}"]
                     
-                    fig = go.Figure()
-                    fig.add_trace(go.Bar(
-                        y=labels,
-                        x=-male_counts.values,
-                        name='Male',
+                    pyramid_chart = pd.DataFrame({
+                        'Age Group': labels * 2,
+                        'Population': list(-male_counts.values) + list(female_counts.values),
+                        'Sex': ['Male'] * len(labels) + ['Female'] * len(labels)
+                    })
+                    
+                    fig = px.bar(
+                        pyramid_chart,
+                        y='Age Group',
+                        x='Population',
+                        color='Sex',
                         orientation='h',
-                        marker_color='#3b6e9b'
-                    ))
-                    fig.add_trace(go.Bar(
-                        y=labels,
-                        x=female_counts.values,
-                        name='Female',
-                        orientation='h',
-                        marker_color='#c45c7a'
-                    ))
-                    fig.update_layout(
+                        barmode='overlay',
                         title=f"Population Pyramid – {selected_site.replace('_', ' ').title()}",
+                        color_discrete_map={'Male': '#3b6e9b', 'Female': '#c45c7a'}
+                    )
+                    fig.update_layout(
                         xaxis_title="Population",
                         yaxis_title="Age Group",
-                        barmode='overlay',
                         bargap=0.1,
                         plot_bgcolor='white',
-                        xaxis=dict(
-                            tickvals=tickvals,
-                            ticktext=ticktext
-                        ),
+                        xaxis=dict(tickvals=tickvals, ticktext=ticktext),
                         legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1)
                     )
                     st.plotly_chart(fig, use_container_width=True)
