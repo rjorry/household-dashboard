@@ -941,26 +941,65 @@ def main():
     st.header(f"Domain 4: Housing Conditions – {selected_site.replace('_', ' ').title()}")
 
     try:
-        # Load household-level housing data (using the consent_hhses_ prefix pattern)
-        housing_df = pd.read_sql(
+        # Discover actual household column names from the database
+        hh_cols_df = pd.read_sql(
             """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_name = 'households'
+            """,
+            engine
+        )
+        hh_cols = hh_cols_df['column_name'].tolist()
+
+        def find_col_hh(keywords):
+            for c in hh_cols:
+                c_lower = c.lower()
+                if all(k in c_lower for k in keywords):
+                    return c
+            return None
+
+        t41 = find_col_hh(['three_4_1'])
+        t44 = find_col_hh(['three_4_4'])
+        t45 = find_col_hh(['three_4_5'])
+        t46 = find_col_hh(['three_4_6'])
+        t47 = find_col_hh(['three_4_7'])
+        t49 = find_col_hh(['three_4_9'])
+        t410 = find_col_hh(['three_4_10'])
+        t415 = find_col_hh(['three_4_15'])
+        ttm = find_col_hh(['total', 'hh', 'member'])
+
+        missing = [n for n, c in zip(
+            ['three_4_1', 'three_4_4', 'three_4_5', 'three_4_6', 'three_4_7',
+             'three_4_9', 'three_4_10', 'three_4_15'],
+            [t41, t44, t45, t46, t47, t49, t410, t415]
+        ) if c is None]
+
+        if missing:
+            raise Exception(
+                f"Could not find one or more housing columns. Missing: {', '.join(missing)}. "
+                f"Columns found: {', '.join(hh_cols[:30])}"
+            )
+
+        total_expr = f'h."{ttm}" AS total_hh_members' if ttm else 'NULL AS total_hh_members'
+
+        # Load household-level housing data using the discovered column names
+        housing_sql = f'''
             SELECT 
                 h.key, h.pro_name, h.dist_name, h.sector,
-                h.consent_hhses_three_4_1 AS three_4_1,
-                h.consent_hhses_three_4_4 AS three_4_4,
-                h.consent_hhses_three_4_5 AS three_4_5,
-                h.consent_hhses_three_4_6 AS three_4_6,
-                h.consent_hhses_three_4_7 AS three_4_7,
-                h.consent_hhses_three_4_9 AS three_4_9,
-                h.consent_hhses_three_4_10 AS three_4_10,
-                h.consent_hhses_three_4_15 AS three_4_15,
-                h.consent_hhses_total_hh_members AS total_hh_members
+                h."{t41}" AS three_4_1,
+                h."{t44}" AS three_4_4,
+                h."{t45}" AS three_4_5,
+                h."{t46}" AS three_4_6,
+                h."{t47}" AS three_4_7,
+                h."{t49}" AS three_4_9,
+                h."{t410}" AS three_4_10,
+                h."{t415}" AS three_4_15,
+                {total_expr}
             FROM households h
             WHERE h.pro_name = %s
-            """,
-            engine,
-            params=(selected_site,)
-        )
+        '''
+        housing_df = pd.read_sql(housing_sql, engine, params=(selected_site,))
 
         # If total_hh_members is missing, compute from individuals
         if housing_df['total_hh_members'].isna().all():
