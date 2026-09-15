@@ -604,33 +604,62 @@ def main():
     st.header(f"Domain 3: Employment & Livelihoods – {selected_site.replace('_', ' ').title()}")
 
     try:
-        # Load individual employment data
-        emp_df = pd.read_sql(
+        # Discover actual employment column names from the database
+        cols_df = pd.read_sql(
             """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_name = 'individuals'
+            """,
+            engine
+        )
+        cols = cols_df['column_name'].tolist()
+
+        def find_col(keywords):
+            for c in cols:
+                c_lower = c.lower()
+                if all(k in c_lower for k in keywords):
+                    return c
+            return None
+
+        app_col = find_col(['employ', 'app'])
+        status_col = find_col(['employ', 'status'])
+        job_col = find_col(['employ', 'job', 'type'])
+
+        if not app_col or not status_col or not job_col:
+            raise Exception(
+                f"Could not find one or more employment columns. "
+                f"Columns found: {', '.join(cols[:30])}"
+            )
+
+        # Load individual employment data using the discovered column names
+        emp_sql = f'''
             SELECT 
                 h.pro_name, h.dist_name, h.sector,
                 i.indiv_line_num, i.sex, i.age_year, i.est_age_years,
-                i.employement_employment_app AS employment_app,
-                i.employement_employment_status AS employment_status,
-                i.employement_job_type AS job_type
+                i."{app_col}" AS employment_app,
+                i."{status_col}" AS employment_status,
+                i."{job_col}" AS job_type
             FROM households h
             LEFT JOIN individuals i ON h.key = i.parent_key
             WHERE h.pro_name = %s
-            """,
-            engine,
-            params=(selected_site,)
-        )
+        '''
+        emp_df = pd.read_sql(emp_sql, engine, params=(selected_site,))
 
-        # Load household income data at household level
-        hh_income_df = pd.read_sql(
-            """
-            SELECT pro_name, dist_name, sector, three_5_1, three_5_4, three_5_5
-            FROM households
-            WHERE pro_name = %s
-            """,
-            engine,
-            params=(selected_site,)
-        )
+        # Load household income data at household level (optional)
+        try:
+            hh_income_df = pd.read_sql(
+                """
+                SELECT pro_name, dist_name, sector, three_5_1, three_5_4, three_5_5
+                FROM households
+                WHERE pro_name = %s
+                """,
+                engine,
+                params=(selected_site,)
+            )
+        except Exception:
+            st.info("Household income columns (three_5_1, three_5_4, three_5_5) were not found; income and expenditure charts will be skipped.")
+            hh_income_df = pd.DataFrame(columns=['pro_name', 'dist_name', 'sector', 'three_5_1', 'three_5_4', 'three_5_5'])
 
         # Convert age columns to numeric
         emp_df['age_year'] = pd.to_numeric(emp_df['age_year'], errors='coerce')
