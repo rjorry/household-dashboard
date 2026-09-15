@@ -650,7 +650,10 @@ def main():
         try:
             hh_income_df = pd.read_sql(
                 """
-                SELECT pro_name, dist_name, sector, three_5_1, three_5_4, three_5_5
+                SELECT pro_name, dist_name, sector,
+                       consent_hhses_three_5_1 AS three_5_1,
+                       consent_hhses_three_5_4 AS three_5_4,
+                       consent_hhses_three_5_5 AS three_5_5
                 FROM households
                 WHERE pro_name = %s
                 """,
