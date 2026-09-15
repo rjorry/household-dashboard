@@ -937,6 +937,284 @@ def main():
         else:
             st.error(f"Error running employment analysis: {e}")
 
+    st.markdown("---")
+    st.header(f"Domain 4: Housing Conditions – {selected_site.replace('_', ' ').title()}")
+
+    try:
+        # Load household-level housing data (using the consent_hhses_ prefix pattern)
+        housing_df = pd.read_sql(
+            """
+            SELECT 
+                h.key, h.pro_name, h.dist_name, h.sector,
+                h.consent_hhses_three_4_1 AS three_4_1,
+                h.consent_hhses_three_4_4 AS three_4_4,
+                h.consent_hhses_three_4_5 AS three_4_5,
+                h.consent_hhses_three_4_6 AS three_4_6,
+                h.consent_hhses_three_4_7 AS three_4_7,
+                h.consent_hhses_three_4_9 AS three_4_9,
+                h.consent_hhses_three_4_10 AS three_4_10,
+                h.consent_hhses_three_4_15 AS three_4_15,
+                h.consent_hhses_total_hh_members AS total_hh_members
+            FROM households h
+            WHERE h.pro_name = %s
+            """,
+            engine,
+            params=(selected_site,)
+        )
+
+        # If total_hh_members is missing, compute from individuals
+        if housing_df['total_hh_members'].isna().all():
+            hh_size = pd.read_sql(
+                """
+                SELECT h.key, COUNT(i.parent_key) AS total_hh_members
+                FROM households h
+                LEFT JOIN individuals i ON h.key = i.parent_key
+                WHERE h.pro_name = %s
+                GROUP BY h.key
+                """,
+                engine,
+                params=(selected_site,)
+            )
+            housing_df = housing_df.drop(columns=['total_hh_members']).merge(
+                hh_size, on='key', how='left'
+            )
+
+        # Convert numeric structural columns
+        for col in ['three_4_4', 'three_4_5', 'three_4_6', 'three_4_7', 'total_hh_members']:
+            housing_df[col] = pd.to_numeric(housing_df[col], errors='coerce')
+
+        # Treat Don't Know / No Response as missing for quality ratings
+        for col in ['three_4_5', 'three_4_6', 'three_4_7']:
+            housing_df.loc[housing_df[col] >= 888, col] = np.nan
+
+        # Normalize categorical string codes
+        for col in ['three_4_1', 'three_4_9', 'three_4_10', 'three_4_15']:
+            housing_df[col + '_norm'] = (
+                housing_df[col]
+                .astype('string')
+                .fillna('')
+                .str.strip()
+                .str.replace(r'\.0$', '', regex=True)
+                .str.zfill(2)
+            )
+
+        # Housing Quality Index (HQI) classification
+        finished_wall = housing_df['three_4_5'] >= 10
+        finished_floor = housing_df['three_4_6'] >= 4
+        finished_roof = housing_df['three_4_7'] >= 7
+        valid_hqi = housing_df[['three_4_5', 'three_4_6', 'three_4_7']].notna().all(axis=1)
+
+        permanent = valid_hqi & finished_wall & finished_floor & finished_roof
+        semi = valid_hqi & finished_roof & (finished_wall | finished_floor) & ~permanent
+        traditional = valid_hqi & ~permanent & ~semi
+
+        hqi_counts = pd.Series([
+            permanent.sum(),
+            semi.sum(),
+            traditional.sum()
+        ], index=['Permanent / Finished', 'Semi-Permanent', 'Traditional / Rudimentary'])
+
+        # Overcrowding
+        housing_df['persons_per_room'] = (
+            housing_df['total_hh_members'] / housing_df['three_4_4']
+        ).where(housing_df['three_4_4'] > 0)
+        overcrowded = housing_df['persons_per_room'] > 2.0
+        total_hh = len(housing_df)
+        overcrowded_count = overcrowded.sum()
+        overcrowding_rate = round(overcrowded_count * 100.0 / total_hh, 2) if total_hh > 0 else 0
+        avg_ppr = housing_df['persons_per_room'].mean()
+
+        # Tenure
+        tenure_map = {
+            '01': 'Own',
+            '02': 'Rent',
+            '03': 'Other'
+        }
+        tenure_counts = housing_df.loc[housing_df['three_4_15_norm'].ne(''), 'three_4_15_norm'].value_counts()
+
+        # Structural type
+        structural_map = {
+            '01': 'Traditional (Bush materials)',
+            '02': 'Semi-permanent house',
+            '03': 'Permanent house'
+        }
+        structural_counts = housing_df.loc[housing_df['three_4_1_norm'].ne(''), 'three_4_1_norm'].value_counts()
+
+        # Kitchen
+        has_dedicated_kitchen = (housing_df['three_4_9_norm'] == '01').sum()
+        kitchen_pct = round(has_dedicated_kitchen * 100.0 / total_hh, 2) if total_hh > 0 else 0
+        kitchen_type_map = {
+            '01': 'Separate room',
+            '02': 'Elsewhere in house',
+            '03': 'Separate building',
+            '04': 'Outdoors'
+        }
+        kitchen_counts = housing_df.loc[
+            (housing_df['three_4_9_norm'] == '01') & (housing_df['three_4_10_norm'].ne('')),
+            'three_4_10_norm'
+        ].value_counts()
+
+        # Site-wide metrics
+        st.subheader("Site-Wide Housing Conditions Summary")
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.metric("Permanent / Finished (HQI)", f"{permanent.sum():,}")
+            st.metric("Semi-Permanent (HQI)", f"{semi.sum():,}")
+            st.metric("Traditional / Rudimentary (HQI)", f"{traditional.sum():,}")
+        with c2:
+            st.metric("Overcrowding Rate", f"{overcrowding_rate:.2f}%")
+            st.metric("Avg. Persons per Sleeping Room", f"{avg_ppr:.2f}" if pd.notna(avg_ppr) else "n/a")
+        with c3:
+            st.metric("Dedicated Kitchen (%)", f"{kitchen_pct:.2f}%")
+
+        # Visualizations
+        st.markdown("---")
+        st.subheader("Housing Quality & Tenure")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            hqi_data = pd.DataFrame({'Housing Quality': hqi_counts.index, 'Count': hqi_counts.values})
+            fig_hqi = px.pie(
+                hqi_data,
+                values='Count',
+                names='Housing Quality',
+                title='Housing Quality Index',
+                color_discrete_sequence=['#2a9d8f', '#e9c46a', '#e76f51']
+            )
+            st.plotly_chart(fig_hqi, use_container_width=True)
+
+        with col2:
+            tenure_data = pd.DataFrame([
+                {'Tenure': tenure_map.get(k, f'Code {k}'), 'Count': int(v)}
+                for k, v in tenure_counts.items()
+            ])
+            if not tenure_data.empty:
+                fig_tenure = px.bar(
+                    tenure_data,
+                    x='Tenure',
+                    y='Count',
+                    title='Dwelling Tenure Arrangement',
+                    color_discrete_sequence=['#3b6e9b']
+                )
+                st.plotly_chart(fig_tenure, use_container_width=True)
+            else:
+                st.info("No tenure data available.")
+
+        st.markdown("---")
+        st.subheader("Structural Type & Kitchen Facilities")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            struct_data = pd.DataFrame([
+                {'Structural Type': structural_map.get(k, f'Code {k}'), 'Count': int(v)}
+                for k, v in structural_counts.items()
+            ])
+            if not struct_data.empty:
+                fig_struct = px.bar(
+                    struct_data,
+                    x='Structural Type',
+                    y='Count',
+                    title='Structural Type Classification',
+                    color_discrete_sequence=['#3b6e9b']
+                )
+                st.plotly_chart(fig_struct, use_container_width=True)
+            else:
+                st.info("No structural type data available.")
+
+        with col2:
+            kitchen_data = pd.DataFrame([
+                {'Kitchen Location': kitchen_type_map.get(k, f'Code {k}'), 'Count': int(v)}
+                for k, v in kitchen_counts.items()
+            ])
+            if not kitchen_data.empty:
+                fig_kitchen = px.bar(
+                    kitchen_data,
+                    x='Kitchen Location',
+                    y='Count',
+                    title='Dedicated Kitchen Location',
+                    color_discrete_sequence=['#3b6e9b']
+                )
+                st.plotly_chart(fig_kitchen, use_container_width=True)
+            else:
+                st.info("No kitchen location data available.")
+
+        # District and sector breakdown
+        st.markdown("---")
+        st.subheader("Housing Conditions by District & Sector")
+
+        housing_district_data = []
+        for (district, sector), group in housing_df.groupby(['dist_name', 'sector']):
+            total = len(group)
+            valid = group[['three_4_5', 'three_4_6', 'three_4_7']].notna().all(axis=1)
+            permanent_g = (valid & (group['three_4_5'] >= 10) & (group['three_4_6'] >= 4) & (group['three_4_7'] >= 7)).sum()
+            semi_g = (valid & (group['three_4_7'] >= 7) & ((group['three_4_5'] >= 10) | (group['three_4_6'] >= 4)) & (permanent_g == False)).sum()
+            trad_g = (valid & (permanent_g == False) & (semi_g == False)).sum()
+            overcrowded_g = (group['persons_per_room'] > 2.0).sum()
+            ppr_g = group['persons_per_room'].mean()
+
+            sector_map = {'01': 'Urban', '02': 'Peri-Urban', '03': 'Settlement', '04': 'Rural'}
+            housing_district_data.append({
+                'District': district,
+                'Sector Code': sector,
+                'Sector': sector_map.get(str(sector).zfill(2), 'Unclassified'),
+                'Households': total,
+                'Permanent (HQI)': int(permanent_g),
+                'Semi-Permanent (HQI)': int(semi_g),
+                'Traditional (HQI)': int(trad_g),
+                'Overcrowding Rate (%)': round(overcrowded_g * 100.0 / total, 2) if total > 0 else 0,
+                'Avg PPR': round(ppr_g, 2) if pd.notna(ppr_g) else 0
+            })
+
+        housing_district_df = pd.DataFrame(housing_district_data)
+        if not housing_district_df.empty:
+            st.dataframe(
+                housing_district_df,
+                column_config={
+                    'District': st.column_config.TextColumn('District'),
+                    'Sector Code': st.column_config.TextColumn('Sector Code'),
+                    'Sector': st.column_config.TextColumn('Sector'),
+                    'Households': st.column_config.NumberColumn('Households', format='%d'),
+                    'Permanent (HQI)': st.column_config.NumberColumn('Permanent (HQI)', format='%d'),
+                    'Semi-Permanent (HQI)': st.column_config.NumberColumn('Semi-Permanent (HQI)', format='%d'),
+                    'Traditional (HQI)': st.column_config.NumberColumn('Traditional (HQI)', format='%d'),
+                    'Overcrowding Rate (%)': st.column_config.NumberColumn('Overcrowding Rate (%)', format='%.2f'),
+                    'Avg PPR': st.column_config.NumberColumn('Avg PPR', format='%.2f')
+                },
+                hide_index=True,
+                use_container_width=True
+            )
+
+            csv_housing = housing_district_df.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label='Download Housing Conditions Analysis (CSV)',
+                data=csv_housing,
+                file_name=f'domain4_housing_{selected_site.lower()}.csv',
+                mime='text/csv'
+            )
+        else:
+            st.info("No district/sector housing data available for this site.")
+
+        # Key indicators explanation
+        st.markdown("---")
+        st.subheader("Key Indicators Captured")
+        st.markdown("""
+        **Housing Quality Index (HQI):** Classifies dwellings into Permanent/Finished, Semi-Permanent, and Traditional/Rudimentary based on wall, floor, and roof material codes. Permanent requires finished walls, floor, and roof.
+
+        **Overcrowding Rate:** The share of households with more than 2 persons per sleeping room, and the average persons-per-room across all households.
+
+        **Dwelling Tenure Arrangement:** Distribution of households by ownership status: own, rent, or other.
+
+        **Structural Type Classification:** Proportion of households in traditional bush-material, semi-permanent, or permanent houses.
+
+        **Dedicated Kitchen Infrastructure:** Percentage of households with a dedicated kitchen and the location of that kitchen (separate room, elsewhere in house, separate building, outdoors).
+        """)
+
+    except Exception as e:
+        if any(col in str(e) for col in ['three_4_1', 'three_4_4', 'three_4_5', 'three_4_6', 'three_4_7', 'three_4_9', 'three_4_10', 'three_4_15', 'total_hh_members']):
+            st.info("Housing condition columns (three_4_1, three_4_4/5/6/7/9/10/15, total_hh_members) are not available in the current dataset. Domain 4 analysis is not possible.")
+        else:
+            st.error(f"Error running housing analysis: {e}")
+
     # ==================== TAB 1: Overview ====================
     with tab1:
         st.header(f"Overview – {selected_site.replace('_', ' ').title()}")
