@@ -130,7 +130,7 @@ def main():
             site_ind_full['sex_norm'] = site_ind_full['sex'].apply(normalize_sex)
             
             # Calculate site-wide demographic indicators
-            total_hh = site_hh_full['dwelling_number'].nunique()
+            total_hh = site_hh_full['key'].nunique()
             total_pop = len(site_ind_full)
             avg_hh_size = round(total_pop / total_hh, 2) if total_hh > 0 else 0
             
@@ -251,9 +251,9 @@ def main():
                     WHEN h.sector = '04' THEN 'Rural'
                     ELSE 'Unclassified'
                 END AS sector_label,
-                COUNT(DISTINCT h.dwelling_number) AS total_households,
+                COUNT(DISTINCT h.key) AS total_households,
                 COUNT(i.indiv_line_num) AS total_population,
-                ROUND(COUNT(i.indiv_line_num) * 1.0 / NULLIF(COUNT(DISTINCT h.dwelling_number), 0), 2) AS avg_household_size,
+                ROUND(COUNT(i.indiv_line_num) * 1.0 / NULLIF(COUNT(DISTINCT h.key), 0), 2) AS avg_household_size,
                 SUM(CASE WHEN LPAD(COALESCE(i.sex::text, ''), 2, '0') = '01' THEN 1 ELSE 0 END) AS total_males,
                 SUM(CASE WHEN LPAD(COALESCE(i.sex::text, ''), 2, '0') = '02' THEN 1 ELSE 0 END) AS total_females,
                 ROUND(
