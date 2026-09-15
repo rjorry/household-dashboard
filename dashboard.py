@@ -165,14 +165,6 @@ def main():
             st.markdown("---")
             st.subheader("Age-Sex Distribution (Population Pyramid)")
             
-            # Temporary diagnostics
-            st.write(f"Total individuals for site: {len(site_ind_full):,}")
-            st.write(f"With valid age: {site_ind_full['final_age'].notna().sum():,}")
-            st.write(f"With valid sex (01/02): {(site_ind_full['sex_norm'].isin(['01','02'])).sum():,}")
-            st.write(f"Unique sex values: {site_ind_full['sex'].dropna().unique()[:20]}")
-            st.write(f"Sex value counts: {site_ind_full['sex'].value_counts().head(20).to_dict()}")
-            st.write(site_ind_full[['parent_key', 'indiv_line_num', 'sex', 'sex_norm', 'age_year', 'est_age_years', 'final_age']].head(10))
-            
             if not site_ind_full.empty:
                 # Create 5-year age cohorts for individuals with valid age and sex
                 valid_pyramid = site_ind_full.dropna(subset=['final_age']).copy()
@@ -187,25 +179,46 @@ def main():
                     pyramid_data['count'] = pyramid_data['count'].fillna(0)
                     
                     # Pivot for pyramid
-                    male_data = pyramid_data[pyramid_data['sex_norm'] == '01'].set_index('age_group')['count'].reindex(labels).fillna(0) * -1
-                    female_data = pyramid_data[pyramid_data['sex_norm'] == '02'].set_index('age_group')['count'].reindex(labels).fillna(0)
+                    male_counts = pyramid_data[pyramid_data['sex_norm'] == '01'].set_index('age_group')['count'].reindex(labels).fillna(0)
+                    female_counts = pyramid_data[pyramid_data['sex_norm'] == '02'].set_index('age_group')['count'].reindex(labels).fillna(0)
                     
-                    pyramid_chart = pd.DataFrame({
-                        'Age Group': labels,
-                        'Males': male_data.values,
-                        'Females': female_data.values
-                    })
+                    # Dynamic x-axis ticks based on max count
+                    max_count = max(male_counts.max(), female_counts.max())
+                    step = round(max_count / 2 / 100) * 100 if max_count > 200 else round(max_count / 2 / 10) * 10
+                    if step == 0:
+                        step = 1
+                    top = step * 2
+                    tickvals = [-top, -step, 0, step, top]
+                    ticktext = [f"{top:,}", f"{step:,}", "0", f"{step:,}", f"{top:,}"]
                     
-                    fig = px.bar(
-                        pyramid_chart,
-                        y='Age Group',
-                        x=['Males', 'Females'],
+                    fig = go.Figure()
+                    fig.add_trace(go.Bar(
+                        y=labels,
+                        x=-male_counts.values,
+                        name='Male',
                         orientation='h',
-                        barmode='relative',
+                        marker_color='#3b6e9b'
+                    ))
+                    fig.add_trace(go.Bar(
+                        y=labels,
+                        x=female_counts.values,
+                        name='Female',
+                        orientation='h',
+                        marker_color='#c45c7a'
+                    ))
+                    fig.update_layout(
                         title=f"Population Pyramid – {selected_site.replace('_', ' ').title()}",
-                        color_discrete_map={'Males': '#1f77b4', 'Females': '#e377c2'}
+                        xaxis_title="Population",
+                        yaxis_title="Age Group",
+                        barmode='overlay',
+                        bargap=0.1,
+                        plot_bgcolor='white',
+                        xaxis=dict(
+                            tickvals=tickvals,
+                            ticktext=ticktext
+                        ),
+                        legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1)
                     )
-                    fig.update_layout(xaxis_title="Population", yaxis_title="Age Group", legend_title="Sex")
                     st.plotly_chart(fig, use_container_width=True)
                 else:
                     st.info("No valid age and sex data available to build the population pyramid.")
