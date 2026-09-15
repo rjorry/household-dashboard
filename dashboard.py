@@ -610,7 +610,9 @@ def main():
             SELECT 
                 h.pro_name, h.dist_name, h.sector,
                 i.indiv_line_num, i.sex, i.age_year, i.est_age_years,
-                i.employment_app, i.employment_status, i.job_type
+                i.employement_employment_app AS employment_app,
+                i.employement_employment_status AS employment_status,
+                i.employement_job_type AS job_type
             FROM households h
             LEFT JOIN individuals i ON h.key = i.parent_key
             WHERE h.pro_name = %s
