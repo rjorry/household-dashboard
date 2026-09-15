@@ -588,7 +588,10 @@ def main():
         """)
 
     except Exception as e:
-        st.error(f"Error running education analysis: {e}")
+        if 'currently_school' in str(e) or 'highest_level_edu' in str(e) or 'main_reason_not_sch' in str(e) or 'reason_not_furth_edu' in str(e):
+            st.info("Education data columns (currently_school, highest_level_edu, main_reason_not_sch, reason_not_furth_edu) are not available in the current dataset. Domain 2 analysis is not possible.")
+        else:
+            st.error(f"Error running education analysis: {e}")
 
     # ==================== TAB 1: Overview ====================
     with tab1:
