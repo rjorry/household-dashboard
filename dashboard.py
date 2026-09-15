@@ -427,18 +427,22 @@ def main():
         st.subheader("Barriers to Schooling and Drop-out Drivers")
 
         main_reason_map = {
+            '00': 'Not Applicable / People Attending School',
             '01': 'No school nearby',
             '02': 'School fees',
             '03': 'Disability',
             '04': 'Cultural / traditional',
-            '05': 'Lack of interest'
+            '05': 'Lack of interest',
+            '06': 'Other Reasons'
         }
         further_reason_map = {
+            '00': 'Not Applicable / People Attending School',
             '01': 'Academic drop-out',
             '02': 'School fees',
             '03': 'Forced marriage / cultural',
             '04': 'Pregnancy',
-            '05': 'Disability'
+            '05': 'Disability',
+            '06': 'Other Reasons'
         }
 
         barrier_counts = edu_5plus.loc[edu_5plus['main_reason_not_sch_norm'].ne(''), 'main_reason_not_sch_norm'].value_counts()
@@ -595,6 +599,304 @@ def main():
             st.info("Education data columns (currently_school, highest_level_edu, main_reason_not_sch, reason_not_furth_edu) are not available in the current dataset. Domain 2 analysis is not possible.")
         else:
             st.error(f"Error running education analysis: {e}")
+
+    st.markdown("---")
+    st.header(f"Domain 3: Employment & Livelihoods – {selected_site.replace('_', ' ').title()}")
+
+    try:
+        # Load individual employment data
+        emp_df = pd.read_sql(
+            """
+            SELECT 
+                h.pro_name, h.dist_name, h.sector,
+                i.indiv_line_num, i.sex, i.age_year, i.est_age_years,
+                i.employment_app, i.employment_status, i.job_type
+            FROM households h
+            LEFT JOIN individuals i ON h.key = i.parent_key
+            WHERE h.pro_name = %s
+            """,
+            engine,
+            params=(selected_site,)
+        )
+
+        # Load household income data at household level
+        hh_income_df = pd.read_sql(
+            """
+            SELECT pro_name, dist_name, sector, three_5_1, three_5_4, three_5_5
+            FROM households
+            WHERE pro_name = %s
+            """,
+            engine,
+            params=(selected_site,)
+        )
+
+        # Convert age columns to numeric
+        emp_df['age_year'] = pd.to_numeric(emp_df['age_year'], errors='coerce')
+        emp_df['est_age_years'] = pd.to_numeric(emp_df['est_age_years'], errors='coerce')
+        emp_df['final_age'] = emp_df['age_year'].fillna(emp_df['est_age_years'])
+
+        # Normalize sex codes
+        def emp_normalize_sex(val):
+            if pd.isna(val):
+                return '99'
+            s = str(val).strip().upper()
+            if s.endswith('.0'):
+                s = s[:-2]
+            if s in ('01', '1', 'M', 'MALE', 'BOY', 'M.'):
+                return '01'
+            elif s in ('02', '2', 'F', 'FEMALE', 'GIRL', 'F.'):
+                return '02'
+            else:
+                return '99'
+
+        emp_df['sex_norm'] = emp_df['sex'].apply(emp_normalize_sex)
+
+        # Normalize coded string variables
+        for col in ['employment_app', 'employment_status', 'job_type']:
+            emp_df[col + '_norm'] = (
+                emp_df[col]
+                .astype('string')
+                .fillna('')
+                .str.strip()
+                .str.replace(r'\.0$', '', regex=True)
+                .str.zfill(2)
+            )
+
+        for col in ['three_5_1']:
+            hh_income_df[col + '_norm'] = (
+                hh_income_df[col]
+                .astype('string')
+                .fillna('')
+                .str.strip()
+                .str.replace(r'\.0$', '', regex=True)
+                .str.zfill(2)
+            )
+
+        hh_income_df['three_5_4'] = pd.to_numeric(hh_income_df['three_5_4'], errors='coerce')
+        hh_income_df['three_5_5'] = pd.to_numeric(hh_income_df['three_5_5'], errors='coerce')
+
+        # Working-age subset (15+)
+        emp_15plus = emp_df[emp_df['final_age'] >= 15].copy()
+
+        # Site-wide metrics
+        working_age_pop = len(emp_15plus)
+        eligible = emp_15plus[emp_15plus['employment_app_norm'] == '01']
+        labor_eligible = len(eligible)
+
+        in_labor_force = eligible[eligible['employment_status_norm'].isin(['01', '02', '03'])]
+        employed = eligible[eligible['employment_status_norm'] == '01']
+        self_employed = eligible[eligible['employment_status_norm'] == '02']
+        unemployed = eligible[eligible['employment_status_norm'] == '03']
+        students = eligible[eligible['employment_status_norm'] == '04']
+
+        lfpr = round(len(in_labor_force) * 100.0 / labor_eligible, 2) if labor_eligible > 0 else 0
+        wage_rate = round(len(employed) * 100.0 / labor_eligible, 2) if labor_eligible > 0 else 0
+        informal_rate = round(len(self_employed) * 100.0 / labor_eligible, 2) if labor_eligible > 0 else 0
+        unemp_rate = round(len(unemployed) * 100.0 / len(in_labor_force), 2) if len(in_labor_force) > 0 else 0
+        student_rate = round(len(students) * 100.0 / labor_eligible, 2) if labor_eligible > 0 else 0
+
+        # Display site-wide metrics
+        st.subheader("Site-Wide Employment & Livelihoods Summary")
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.metric("Working-Age Pop 15+", f"{working_age_pop:,}")
+            st.metric("Labour Eligible", f"{labor_eligible:,}")
+        with c2:
+            st.metric("Labour Force Participation", f"{lfpr:.2f}%")
+            st.metric("Wage Employment Rate", f"{wage_rate:.2f}%")
+        with c3:
+            st.metric("Informal / Subsistence Rate", f"{informal_rate:.2f}%")
+            st.metric("Open Unemployment Rate", f"{unemp_rate:.2f}%")
+
+        # Income source and earnings
+        st.markdown("---")
+        st.subheader("Household Income & Livelihoods")
+
+        income_source_map = {
+            '01': 'Paid employment',
+            '02': 'Selling cash crops / fishing',
+            '03': 'Informal sector'
+        }
+
+        income_counts = hh_income_df.loc[hh_income_df['three_5_1_norm'].ne(''), 'three_5_1_norm'].value_counts()
+        income_data = pd.DataFrame([
+            {'Source': income_source_map.get(k, f'Code {k}'), 'Count': int(v)}
+            for k, v in income_counts.items()
+        ])
+
+        avg_income = hh_income_df['three_5_4'].mean()
+        avg_food = hh_income_df['three_5_5'].mean()
+        food_ratio = round(avg_food * 100.0 / avg_income, 2) if avg_income and avg_income > 0 else 0
+
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric("Avg. Fortnightly Income (PGK)", f"{avg_income:.2f}" if pd.notna(avg_income) else "n/a")
+            st.metric("Avg. Food Expenditure (PGK)", f"{avg_food:.2f}" if pd.notna(avg_food) else "n/a")
+            st.metric("Food / Income Ratio", f"{food_ratio:.2f}%" if pd.notna(avg_income) and pd.notna(avg_food) else "n/a")
+
+        with col2:
+            if not income_data.empty:
+                st.dataframe(income_data, hide_index=True, use_container_width=True)
+                fig_inc = px.bar(
+                    income_data.sort_values('Count', ascending=True),
+                    y='Source',
+                    x='Count',
+                    orientation='h',
+                    title='Main Household Income Source',
+                    color_discrete_sequence=['#3b6e9b']
+                )
+                fig_inc.update_layout(yaxis={'categoryorder': 'total ascending'})
+                st.plotly_chart(fig_inc, use_container_width=True)
+            else:
+                st.info("No household income source data available.")
+
+        # Occupation breakdown
+        st.markdown("---")
+        st.subheader("Occupation Breakdown")
+
+        job_type_map = {
+            '01': 'Subsistence / Fishing',
+            '02': 'Street / Market Vendor',
+            '03': 'SME Owner',
+            '04': 'SME Owner (04)',
+            '05': 'Labourer',
+            '06': 'Hospitality',
+            '07': 'Construction',
+            '08': 'Skilled Trade',
+            '09': 'Professional'
+        }
+
+        job_counts = emp_15plus.loc[emp_15plus['job_type_norm'].ne(''), 'job_type_norm'].value_counts()
+        job_data = pd.DataFrame([
+            {'Occupation': job_type_map.get(k, f'Code {k}'), 'Count': int(v)}
+            for k, v in job_counts.items()
+        ])
+
+        if not job_data.empty:
+            col1, col2 = st.columns(2)
+            with col1:
+                st.dataframe(job_data, hide_index=True, use_container_width=True)
+            with col2:
+                fig_job = px.bar(
+                    job_data.sort_values('Count', ascending=True),
+                    y='Occupation',
+                    x='Count',
+                    orientation='h',
+                    title='Occupation Distribution',
+                    color_discrete_sequence=['#3b6e9b']
+                )
+                fig_job.update_layout(yaxis={'categoryorder': 'total ascending'})
+                st.plotly_chart(fig_job, use_container_width=True)
+        else:
+            st.info("No occupation data available.")
+
+        # District and sector breakdown
+        st.markdown("---")
+        st.subheader("Employment & Livelihoods by District & Sector")
+
+        emp_district_data = []
+        for (district, sector), group in emp_15plus.groupby(['dist_name', 'sector']):
+            eligible_g = group[group['employment_app_norm'] == '01']
+            labor_eligible_g = len(eligible_g)
+            in_lf = eligible_g[eligible_g['employment_status_norm'].isin(['01', '02', '03'])]
+            employed_g = eligible_g[eligible_g['employment_status_norm'] == '01']
+            self_g = eligible_g[eligible_g['employment_status_norm'] == '02']
+            unemp_g = eligible_g[eligible_g['employment_status_norm'] == '03']
+
+            lfpr_g = round(len(in_lf) * 100.0 / labor_eligible_g, 2) if labor_eligible_g > 0 else 0
+            wage_g = round(len(employed_g) * 100.0 / labor_eligible_g, 2) if labor_eligible_g > 0 else 0
+            informal_g = round(len(self_g) * 100.0 / labor_eligible_g, 2) if labor_eligible_g > 0 else 0
+            unemp_g_rate = round(len(unemp_g) * 100.0 / len(in_lf), 2) if len(in_lf) > 0 else 0
+
+            sector_map = {
+                '01': 'Urban', '02': 'Peri-Urban', '03': 'Settlement', '04': 'Rural'
+            }
+            emp_district_data.append({
+                'District': district,
+                'Sector Code': sector,
+                'Sector': sector_map.get(str(sector).zfill(2), 'Unclassified'),
+                'Working-Age 15+': len(group),
+                'Labour Eligible': labor_eligible_g,
+                'LFPR (%)': lfpr_g,
+                'Wage Rate (%)': wage_g,
+                'Informal Rate (%)': informal_g,
+                'Unemployment (%)': unemp_g_rate
+            })
+
+        emp_district_df = pd.DataFrame(emp_district_data)
+
+        # Merge household income by district/sector
+        income_district = hh_income_df.groupby(['dist_name', 'sector']).agg(
+            avg_income_pgk=('three_5_4', 'mean'),
+            avg_food_pgk=('three_5_5', 'mean')
+        ).reset_index()
+        income_district['avg_income_pgk'] = income_district['avg_income_pgk'].round(2)
+        income_district['avg_food_pgk'] = income_district['avg_food_pgk'].round(2)
+
+        if not emp_district_df.empty:
+            emp_district_df = emp_district_df.merge(
+                income_district,
+                left_on=['District', 'Sector Code'],
+                right_on=['dist_name', 'sector'],
+                how='left'
+            )
+            emp_district_df['Avg Income (PGK)'] = emp_district_df['avg_income_pgk'].fillna(0)
+            emp_district_df['Avg Food Spend (PGK)'] = emp_district_df['avg_food_pgk'].fillna(0)
+            emp_district_df = emp_district_df.drop(columns=['dist_name', 'sector', 'avg_income_pgk', 'avg_food_pgk'])
+
+            st.dataframe(
+                emp_district_df,
+                column_config={
+                    'District': st.column_config.TextColumn('District'),
+                    'Sector Code': st.column_config.TextColumn('Sector Code'),
+                    'Sector': st.column_config.TextColumn('Sector'),
+                    'Working-Age 15+': st.column_config.NumberColumn('Working-Age 15+', format='%d'),
+                    'Labour Eligible': st.column_config.NumberColumn('Labour Eligible', format='%d'),
+                    'LFPR (%)': st.column_config.NumberColumn('LFPR (%)', format='%.2f'),
+                    'Wage Rate (%)': st.column_config.NumberColumn('Wage Rate (%)', format='%.2f'),
+                    'Informal Rate (%)': st.column_config.NumberColumn('Informal Rate (%)', format='%.2f'),
+                    'Unemployment (%)': st.column_config.NumberColumn('Unemployment (%)', format='%.2f'),
+                    'Avg Income (PGK)': st.column_config.NumberColumn('Avg Income (PGK)', format='%.2f'),
+                    'Avg Food Spend (PGK)': st.column_config.NumberColumn('Avg Food Spend (PGK)', format='%.2f')
+                },
+                hide_index=True,
+                use_container_width=True
+            )
+
+            csv_emp = emp_district_df.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label='Download Employment & Livelihoods Analysis (CSV)',
+                data=csv_emp,
+                file_name=f'domain3_employment_{selected_site.lower()}.csv',
+                mime='text/csv'
+            )
+        else:
+            st.info("No district/sector employment data available for this site.")
+
+        # Key indicators explanation
+        st.markdown("---")
+        st.subheader("Key Indicators Captured")
+        st.markdown("""
+        **Labour Force Participation Rate (15+):** Share of the working-age population that is either employed, self-employed, or unemployed and seeking work. Eligible individuals exclude those not in the labour force due to old age, disability, or sickness.
+
+        **Formal Wage Employment Rate:** Percentage of the labour-eligible population that is in paid wage employment.
+
+        **Informal / Subsistence Rate:** Percentage of the labour-eligible population engaged in self-employment or subsistence production.
+
+        **Open Unemployment Rate:** Share of the labour force that is unemployed and actively looking for work, among those in the labour force.
+
+        **Main Household Income Source:** Distribution of households by their primary income generation channel: paid employment, cash crops/fishing, or the informal sector.
+
+        **Fortnightly Income & Food Expenditure:** Average household cash income and food expenditure per fortnight, and the share of income spent on food.
+
+        **Occupation Breakdown:** Distribution of working adults across specific economic activities, including subsistence/fishing, vending, SME ownership, labouring, hospitality, construction, skilled trades, and professional occupations.
+        """)
+
+    except Exception as e:
+        if any(col in str(e) for col in ['employment_app', 'employment_status', 'job_type', 'three_5_1', 'three_5_4', 'three_5_5']):
+            st.info("Employment or livelihood columns (employment_app, employment_status, job_type, three_5_1, three_5_4, three_5_5) are not available in the current dataset. Domain 3 analysis is not possible.")
+        else:
+            st.error(f"Error running employment analysis: {e}")
 
     # ==================== TAB 1: Overview ====================
     with tab1:
