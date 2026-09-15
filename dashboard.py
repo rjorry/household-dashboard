@@ -315,6 +315,281 @@ def main():
             st.error(f"Error running demographic analysis: {e}")
             st.exception(e)
 
+    st.markdown("---")
+    st.header(f"Domain 2: Education & Human Capital – {selected_site.replace('_', ' ').title()}")
+
+    try:
+        # Load individual education records for the selected site
+        edu_df = pd.read_sql(
+            """
+            SELECT 
+                h.pro_name, h.dist_name, h.sector,
+                i.indiv_line_num, i.sex, i.age_year, i.est_age_years,
+                i.currently_school, i.highest_level_edu, i.main_reason_not_sch, i.reason_not_furth_edu
+            FROM households h
+            LEFT JOIN individuals i ON h.key = i.parent_key
+            WHERE h.pro_name = %s
+            """,
+            engine,
+            params=(selected_site,)
+        )
+
+        # Convert age columns to numeric
+        edu_df['age_year'] = pd.to_numeric(edu_df['age_year'], errors='coerce')
+        edu_df['est_age_years'] = pd.to_numeric(edu_df['est_age_years'], errors='coerce')
+        edu_df['final_age'] = edu_df['age_year'].fillna(edu_df['est_age_years'])
+
+        # Normalize sex codes
+        def edu_normalize_sex(val):
+            if pd.isna(val):
+                return '99'
+            s = str(val).strip().upper()
+            if s.endswith('.0'):
+                s = s[:-2]
+            if s in ('01', '1', 'M', 'MALE', 'BOY', 'M.'):
+                return '01'
+            elif s in ('02', '2', 'F', 'FEMALE', 'GIRL', 'F.'):
+                return '02'
+            else:
+                return '99'
+
+        edu_df['sex_norm'] = edu_df['sex'].apply(edu_normalize_sex)
+
+        # Normalize coded string variables to two-digit strings
+        for col in ['currently_school', 'highest_level_edu', 'main_reason_not_sch', 'reason_not_furth_edu']:
+            edu_df[col + '_norm'] = (
+                edu_df[col]
+                .astype('string')
+                .fillna('')
+                .str.strip()
+                .str.replace(r'\.0$', '', regex=True)
+                .str.zfill(2)
+            )
+
+        # Subsets
+        edu_5plus = edu_df[edu_df['final_age'] >= 5].copy()
+        edu_15plus = edu_df[edu_df['final_age'] >= 15].copy()
+
+        # Site-wide metrics
+        pop_5plus = len(edu_5plus)
+        pop_15plus = len(edu_15plus)
+
+        attending = (edu_5plus['currently_school_norm'] == '01').sum()
+        attendance_rate = round(attending * 100.0 / pop_5plus, 2) if pop_5plus > 0 else 0
+
+        male_5plus = edu_5plus[edu_5plus['sex_norm'] == '01']
+        female_5plus = edu_5plus[edu_5plus['sex_norm'] == '02']
+        male_rate = round(
+            (male_5plus['currently_school_norm'] == '01').sum() * 100.0 / len(male_5plus), 2
+        ) if len(male_5plus) > 0 else 0
+        female_rate = round(
+            (female_5plus['currently_school_norm'] == '01').sum() * 100.0 / len(female_5plus), 2
+        ) if len(female_5plus) > 0 else 0
+        gpi = round(female_rate / male_rate, 2) if male_rate > 0 else 0
+
+        # Educational attainment (adults 15+)
+        primary_codes = {'02', '03', '04', '05', '06', '07', '08', '09', '10'}
+        secondary_codes = {'04', '07', '08', '09', '10'}
+        tertiary_tvet_codes = {'06', '08', '10'}
+
+        primary_rate = round(
+            edu_15plus['highest_level_edu_norm'].isin(primary_codes).sum() * 100.0 / pop_15plus, 2
+        ) if pop_15plus > 0 else 0
+        secondary_rate = round(
+            edu_15plus['highest_level_edu_norm'].isin(secondary_codes).sum() * 100.0 / pop_15plus, 2
+        ) if pop_15plus > 0 else 0
+        tertiary_rate = round(
+            edu_15plus['highest_level_edu_norm'].isin(tertiary_tvet_codes).sum() * 100.0 / pop_15plus, 2
+        ) if pop_15plus > 0 else 0
+
+        # Display site-wide metrics
+        st.subheader("Site-Wide Education & Human Capital Summary")
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            st.metric("Pop Aged 5+", f"{pop_5plus:,}")
+            st.metric("Attendance Rate", f"{attendance_rate:.2f}%")
+        with c2:
+            st.metric("Male Attendance", f"{male_rate:.2f}%")
+            st.metric("Female Attendance", f"{female_rate:.2f}%")
+            st.metric("GPI", f"{gpi:.2f}")
+        with c3:
+            st.metric("Adult Pop 15+", f"{pop_15plus:,}")
+            st.metric("Primary+", f"{primary_rate:.2f}%")
+        with c4:
+            st.metric("Secondary+", f"{secondary_rate:.2f}%")
+            st.metric("Tertiary/TVET+", f"{tertiary_rate:.2f}%")
+
+        # Barriers and drop-out drivers
+        st.markdown("---")
+        st.subheader("Barriers to Schooling and Drop-out Drivers")
+
+        main_reason_map = {
+            '01': 'No school nearby',
+            '02': 'School fees',
+            '03': 'Disability',
+            '04': 'Cultural / traditional',
+            '05': 'Lack of interest'
+        }
+        further_reason_map = {
+            '01': 'Academic drop-out',
+            '02': 'School fees',
+            '03': 'Forced marriage / cultural',
+            '04': 'Pregnancy',
+            '05': 'Disability'
+        }
+
+        barrier_counts = edu_5plus.loc[edu_5plus['main_reason_not_sch_norm'].ne(''), 'main_reason_not_sch_norm'].value_counts()
+        barrier_data = pd.DataFrame([
+            {'Reason': main_reason_map.get(k, f'Code {k}'), 'Count': int(v)}
+            for k, v in barrier_counts.items()
+        ])
+
+        further_counts = edu_5plus.loc[edu_5plus['reason_not_furth_edu_norm'].ne(''), 'reason_not_furth_edu_norm'].value_counts()
+        further_data = pd.DataFrame([
+            {'Reason': further_reason_map.get(k, f'Code {k}'), 'Count': int(v)}
+            for k, v in further_counts.items()
+        ])
+
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown("**Barriers to Schooling (never attended)**")
+            if not barrier_data.empty:
+                st.dataframe(barrier_data, hide_index=True, use_container_width=True)
+                fig_b = px.bar(
+                    barrier_data.sort_values('Count', ascending=True),
+                    y='Reason',
+                    x='Count',
+                    orientation='h',
+                    title='Barriers to Schooling',
+                    color_discrete_sequence=['#3b6e9b']
+                )
+                fig_b.update_layout(yaxis={'categoryorder': 'total ascending'})
+                st.plotly_chart(fig_b, use_container_width=True)
+            else:
+                st.info("No barrier data available.")
+
+        with col2:
+            st.markdown("**Drop-out / Non-Furtherance Drivers**")
+            if not further_data.empty:
+                st.dataframe(further_data, hide_index=True, use_container_width=True)
+                fig_d = px.bar(
+                    further_data.sort_values('Count', ascending=True),
+                    y='Reason',
+                    x='Count',
+                    orientation='h',
+                    title='Drop-out / Non-Furtherance Drivers',
+                    color_discrete_sequence=['#c45c7a']
+                )
+                fig_d.update_layout(yaxis={'categoryorder': 'total ascending'})
+                st.plotly_chart(fig_d, use_container_width=True)
+            else:
+                st.info("No drop-out driver data available.")
+
+        # District and sector breakdown
+        st.markdown("---")
+        st.subheader("Education Indicators by District & Sector")
+
+        edu_district_data = []
+        for (district, sector), group in edu_df.groupby(['dist_name', 'sector']):
+            g_5plus = group[group['final_age'] >= 5]
+            g_15plus = group[group['final_age'] >= 15]
+
+            pop_5 = len(g_5plus)
+            pop_15 = len(g_15plus)
+
+            att_rate = round(
+                (g_5plus['currently_school_norm'] == '01').sum() * 100.0 / pop_5, 2
+            ) if pop_5 > 0 else 0
+
+            m_5 = g_5plus[g_5plus['sex_norm'] == '01']
+            f_5 = g_5plus[g_5plus['sex_norm'] == '02']
+            m_rate = round(
+                (m_5['currently_school_norm'] == '01').sum() * 100.0 / len(m_5), 2
+            ) if len(m_5) > 0 else 0
+            f_rate = round(
+                (f_5['currently_school_norm'] == '01').sum() * 100.0 / len(f_5), 2
+            ) if len(f_5) > 0 else 0
+            gpi_val = round(f_rate / m_rate, 2) if m_rate > 0 else 0
+
+            p_rate = round(
+                g_15plus['highest_level_edu_norm'].isin(primary_codes).sum() * 100.0 / pop_15, 2
+            ) if pop_15 > 0 else 0
+            s_rate = round(
+                g_15plus['highest_level_edu_norm'].isin(secondary_codes).sum() * 100.0 / pop_15, 2
+            ) if pop_15 > 0 else 0
+            t_rate = round(
+                g_15plus['highest_level_edu_norm'].isin(tertiary_tvet_codes).sum() * 100.0 / pop_15, 2
+            ) if pop_15 > 0 else 0
+
+            sector_map = {
+                '01': 'Urban', '02': 'Peri-Urban', '03': 'Settlement', '04': 'Rural'
+            }
+            edu_district_data.append({
+                'District': district,
+                'Sector Code': sector,
+                'Sector': sector_map.get(str(sector).zfill(2), 'Unclassified'),
+                'Pop 5+': pop_5,
+                'Attendance Rate (%)': att_rate,
+                'Male Attendance (%)': m_rate,
+                'Female Attendance (%)': f_rate,
+                'GPI': gpi_val,
+                'Pop 15+': pop_15,
+                'Primary+ (%)': p_rate,
+                'Secondary+ (%)': s_rate,
+                'Tertiary/TVET+ (%)': t_rate
+            })
+
+        edu_district_df = pd.DataFrame(edu_district_data)
+
+        if not edu_district_df.empty:
+            st.dataframe(
+                edu_district_df,
+                column_config={
+                    'District': st.column_config.TextColumn('District'),
+                    'Sector Code': st.column_config.TextColumn('Sector Code'),
+                    'Sector': st.column_config.TextColumn('Sector'),
+                    'Pop 5+': st.column_config.NumberColumn('Pop 5+', format='%d'),
+                    'Attendance Rate (%)': st.column_config.NumberColumn('Attendance Rate (%)', format='%.2f'),
+                    'Male Attendance (%)': st.column_config.NumberColumn('Male Attendance (%)', format='%.2f'),
+                    'Female Attendance (%)': st.column_config.NumberColumn('Female Attendance (%)', format='%.2f'),
+                    'GPI': st.column_config.NumberColumn('GPI', format='%.2f'),
+                    'Pop 15+': st.column_config.NumberColumn('Pop 15+', format='%d'),
+                    'Primary+ (%)': st.column_config.NumberColumn('Primary+ (%)', format='%.2f'),
+                    'Secondary+ (%)': st.column_config.NumberColumn('Secondary+ (%)', format='%.2f'),
+                    'Tertiary/TVET+ (%)': st.column_config.NumberColumn('Tertiary/TVET+ (%)', format='%.2f')
+                },
+                hide_index=True,
+                use_container_width=True
+            )
+
+            csv_edu = edu_district_df.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label='Download Education Analysis (CSV)',
+                data=csv_edu,
+                file_name=f'domain2_education_{selected_site.lower()}.csv',
+                mime='text/csv'
+            )
+        else:
+            st.info("No district/sector education data available for this site.")
+
+        # Key indicators explanation
+        st.markdown("---")
+        st.subheader("Key Indicators Captured")
+        st.markdown("""
+        **School Attendance Rate (Aged 5+):** Percentage of the population aged 5 years and older currently attending school. A key indicator of school participation.
+
+        **Educational Attainment (Aged 15+):** Percentage of adults (15+) who have completed at least primary, secondary, or tertiary/TVET education. Captures the stock of human capital in the adult population.
+
+        **Gender Parity Index (GPI):** Ratio of female to male school attendance rates. A value of 1.0 indicates parity; values below 1.0 suggest male advantage, while values above 1.0 suggest female advantage.
+
+        **Barriers to Schooling (never attended):** Distribution of primary reasons reported for never enrolling in school, such as distance, cost, disability, cultural reasons, or lack of interest.
+
+        **Drop-out / Non-Furtherance Drivers:** Distribution of main causes for discontinuing studies beyond the highest level completed, including academic drop-out, fees, forced marriage/cultural pressures, pregnancy, and disability.
+        """)
+
+    except Exception as e:
+        st.error(f"Error running education analysis: {e}")
+
     # ==================== TAB 1: Overview ====================
     with tab1:
         st.header(f"Overview – {selected_site.replace('_', ' ').title()}")
