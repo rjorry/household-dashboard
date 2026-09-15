@@ -747,9 +747,11 @@ def main():
         st.subheader("Household Income & Livelihoods")
 
         income_source_map = {
+            '00': 'No Response',
             '01': 'Paid employment',
             '02': 'Selling cash crops / fishing',
-            '03': 'Informal sector'
+            '03': 'Informal sector',
+            '888': "Don't Know"
         }
 
         income_counts = hh_income_df.loc[hh_income_df['three_5_1_norm'].ne(''), 'three_5_1_norm'].value_counts()
@@ -789,6 +791,7 @@ def main():
         st.subheader("Occupation Breakdown")
 
         job_type_map = {
+            '00': 'No Response',
             '01': 'Subsistence / Fishing',
             '02': 'Street / Market Vendor',
             '03': 'SME Owner',
@@ -797,7 +800,9 @@ def main():
             '06': 'Hospitality',
             '07': 'Construction',
             '08': 'Skilled Trade',
-            '09': 'Professional'
+            '09': 'Professional',
+            '10': 'Religious Leaders',
+            '888': "Don't Know"
         }
 
         job_counts = emp_15plus.loc[emp_15plus['job_type_norm'].ne(''), 'job_type_norm'].value_counts()
