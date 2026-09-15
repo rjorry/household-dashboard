@@ -108,13 +108,17 @@ def main():
             site_hh_full = hh_full_df[hh_full_df['pro_name'].str.lower() == selected_site.lower()].copy()
             site_ind_full = ind_full_df[ind_full_df['parent_key'].isin(site_hh_full['key'])].copy()
             
+            # Normalize sex codes to handle '01'/'02', '1'/'2', 1/2, etc.
+            site_ind_full['sex_norm'] = site_ind_full['sex'].astype(str).str.strip().str.zfill(2)
+            site_ind_full['sex_norm'] = site_ind_full['sex_norm'].replace({'00': '01'})
+            
             # Calculate site-wide demographic indicators
             total_hh = site_hh_full['dwelling_number'].nunique()
             total_pop = len(site_ind_full)
             avg_hh_size = round(total_pop / total_hh, 2) if total_hh > 0 else 0
             
-            males = (site_ind_full['sex'] == '01').sum()
-            females = (site_ind_full['sex'] == '02').sum()
+            males = (site_ind_full['sex_norm'] == '01').sum()
+            females = (site_ind_full['sex_norm'] == '02').sum()
             sex_ratio = round((males / females * 100), 2) if females > 0 else 0
             
             children = (site_ind_full['final_age'] < 15).sum()
@@ -146,16 +150,16 @@ def main():
             
             if not site_ind_full.empty:
                 # Create 5-year age cohorts
-                bins = list(range(0, 86, 5)) + [np.inf]
+                bins = list(range(0, 81, 5)) + [np.inf]
                 labels = [f"{i}-{i+4}" for i in range(0, 80, 5)] + ["80+"]
                 site_ind_full['age_group'] = pd.cut(site_ind_full['final_age'], bins=bins, labels=labels, right=False)
                 
-                pyramid_data = site_ind_full.groupby(['age_group', 'sex'], observed=True).size().reset_index(name='count')
+                pyramid_data = site_ind_full.groupby(['age_group', 'sex_norm'], observed=True).size().reset_index(name='count')
                 pyramid_data['count'] = pyramid_data['count'].fillna(0)
                 
                 # Pivot for pyramid
-                male_data = pyramid_data[pyramid_data['sex'] == '01'].set_index('age_group')['count'].reindex(labels).fillna(0) * -1
-                female_data = pyramid_data[pyramid_data['sex'] == '02'].set_index('age_group')['count'].reindex(labels).fillna(0)
+                male_data = pyramid_data[pyramid_data['sex_norm'] == '01'].set_index('age_group')['count'].reindex(labels).fillna(0) * -1
+                female_data = pyramid_data[pyramid_data['sex_norm'] == '02'].set_index('age_group')['count'].reindex(labels).fillna(0)
                 
                 pyramid_chart = pd.DataFrame({
                     'Age Group': labels,
@@ -210,11 +214,11 @@ def main():
                 COUNT(DISTINCT h.dwelling_number) AS total_households,
                 COUNT(i.indiv_line_num) AS total_population,
                 ROUND(COUNT(i.indiv_line_num) * 1.0 / NULLIF(COUNT(DISTINCT h.dwelling_number), 0), 2) AS avg_household_size,
-                SUM(CASE WHEN i.sex = '01' THEN 1 ELSE 0 END) AS total_males,
-                SUM(CASE WHEN i.sex = '02' THEN 1 ELSE 0 END) AS total_females,
+                SUM(CASE WHEN LPAD(COALESCE(i.sex::text, ''), 2, '0') = '01' THEN 1 ELSE 0 END) AS total_males,
+                SUM(CASE WHEN LPAD(COALESCE(i.sex::text, ''), 2, '0') = '02' THEN 1 ELSE 0 END) AS total_females,
                 ROUND(
-                    (SUM(CASE WHEN i.sex = '01' THEN 1 ELSE 0 END) * 100.0) / 
-                    NULLIF(SUM(CASE WHEN i.sex = '02' THEN 1 ELSE 0 END), 0), 2
+                    (SUM(CASE WHEN LPAD(COALESCE(i.sex::text, ''), 2, '0') = '01' THEN 1 ELSE 0 END) * 100.0) / 
+                    NULLIF(SUM(CASE WHEN LPAD(COALESCE(i.sex::text, ''), 2, '0') = '02' THEN 1 ELSE 0 END), 0), 2
                 ) AS sex_ratio,
                 SUM(CASE WHEN COALESCE(i.age_year, i.est_age_years) < 15 THEN 1 ELSE 0 END) AS children_0_14,
                 SUM(CASE WHEN COALESCE(i.age_year, i.est_age_years) BETWEEN 15 AND 64 THEN 1 ELSE 0 END) AS working_age_15_64,
