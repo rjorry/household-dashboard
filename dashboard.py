@@ -81,114 +81,176 @@ def main():
 
     # ==================== TAB: Report ====================
     with tab_report:
-        st.header(f"Demographic Analysis – {selected_site.replace('_', ' ').title()}")
+        st.header(f"Domain 1: Population & Demography – {selected_site.replace('_', ' ').title()}")
         
-        # Use the same approach as Overview tab - filter individuals for the selected site
-        site_ind_df = ind_df[ind_df['parent_key'].isin(site_hh_df['key'])]
-        
-        # Load full individual data with demographics for calculations
+        # Load full individual and household data with required demographic fields
         try:
+            hh_full_df = pd.read_sql(
+                """
+                SELECT key, pro_name, dist_name, llg_name, ward_name, sector, dwelling_number, total_hh_members
+                FROM households
+                """,
+                engine
+            )
+            
             ind_full_df = pd.read_sql(
                 """
-                SELECT parent_key, sex, age_year
+                SELECT parent_key, indiv_line_num, sex, age_year, est_age_years
                 FROM individuals
                 """,
                 engine
             )
             
-            # Filter individuals for selected site
-            site_ind_full = ind_full_df[ind_full_df['parent_key'].isin(site_hh_df['key'])]
+            # Use age_year if available, otherwise fall back to est_age_years
+            ind_full_df['final_age'] = ind_full_df['age_year'].fillna(ind_full_df['est_age_years'])
             
-            # Calculate demographic indicators
-            total_hh = len(site_hh_df)
+            # Filter for selected site
+            site_hh_full = hh_full_df[hh_full_df['pro_name'].str.lower() == selected_site.lower()].copy()
+            site_ind_full = ind_full_df[ind_full_df['parent_key'].isin(site_hh_full['key'])].copy()
+            
+            # Calculate site-wide demographic indicators
+            total_hh = site_hh_full['dwelling_number'].nunique()
             total_pop = len(site_ind_full)
             avg_hh_size = round(total_pop / total_hh, 2) if total_hh > 0 else 0
             
-            # Sex ratio (males per 100 females)
             males = (site_ind_full['sex'] == '01').sum()
             females = (site_ind_full['sex'] == '02').sum()
             sex_ratio = round((males / females * 100), 2) if females > 0 else 0
             
-            # Dependency ratio
-            dependents = ((site_ind_full['age_year'] < 15) | (site_ind_full['age_year'] >= 65)).sum()
-            working_age = ((site_ind_full['age_year'] >= 15) & (site_ind_full['age_year'] <= 64)).sum()
-            dependency_ratio = round((dependents / working_age * 100), 2) if working_age > 0 else 0
+            children = (site_ind_full['final_age'] < 15).sum()
+            working_age = ((site_ind_full['final_age'] >= 15) & (site_ind_full['final_age'] <= 64)).sum()
+            elderly = (site_ind_full['final_age'] >= 65).sum()
+            dependency_ratio = round(((children + elderly) / working_age * 100), 2) if working_age > 0 else 0
             
             # Display site-wide summary
             st.subheader("Site-Wide Demographic Summary")
-            col1, col2, col3, col4, col5 = st.columns(5)
+            col1, col2, col3, col4, col5, col6, col7 = st.columns(7)
             with col1:
-                st.metric("Total Households", f"{total_hh:,}")
-            with col2:
                 st.metric("Total Population", f"{total_pop:,}")
+            with col2:
+                st.metric("Total Households", f"{total_hh:,}")
             with col3:
                 st.metric("Avg HH Size", f"{avg_hh_size:.2f}")
             with col4:
-                st.metric("Sex Ratio", f"{sex_ratio:.2f}")
+                st.metric("Males", f"{males:,}")
             with col5:
+                st.metric("Females", f"{females:,}")
+            with col6:
+                st.metric("Sex Ratio", f"{sex_ratio:.2f}")
+            with col7:
                 st.metric("Dependency Ratio", f"{dependency_ratio:.2f}%")
+            
+            # Population Pyramid
+            st.markdown("---")
+            st.subheader("Age-Sex Distribution (Population Pyramid)")
+            
+            if not site_ind_full.empty:
+                # Create 5-year age cohorts
+                bins = list(range(0, 86, 5)) + [np.inf]
+                labels = [f"{i}-{i+4}" for i in range(0, 80, 5)] + ["80+"]
+                site_ind_full['age_group'] = pd.cut(site_ind_full['final_age'], bins=bins, labels=labels, right=False)
+                
+                pyramid_data = site_ind_full.groupby(['age_group', 'sex'], observed=True).size().reset_index(name='count')
+                pyramid_data['count'] = pyramid_data['count'].fillna(0)
+                
+                # Pivot for pyramid
+                male_data = pyramid_data[pyramid_data['sex'] == '01'].set_index('age_group')['count'].reindex(labels).fillna(0) * -1
+                female_data = pyramid_data[pyramid_data['sex'] == '02'].set_index('age_group')['count'].reindex(labels).fillna(0)
+                
+                pyramid_chart = pd.DataFrame({
+                    'Age Group': labels,
+                    'Males': male_data.values,
+                    'Females': female_data.values
+                })
+                
+                fig = px.bar(
+                    pyramid_chart,
+                    y='Age Group',
+                    x=['Males', 'Females'],
+                    orientation='h',
+                    barmode='relative',
+                    title=f"Population Pyramid – {selected_site.replace('_', ' ').title()}",
+                    color_discrete_map={'Males': '#1f77b4', 'Females': '#e377c2'}
+                )
+                fig.update_layout(xaxis_title="Population", yaxis_title="Age Group", legend_title="Sex")
+                st.plotly_chart(fig, use_container_width=True)
             
             # Key indicators explanation
             st.markdown("---")
             st.subheader("Key Indicators Captured")
             st.markdown("""
-            **Total Population & Households:** Provides the absolute scale of the surveillance area for administrative planning.
+            **Total Population:** Sum of registered individuals in the surveillance roster.
             
-            **Average Household Size:** Measures living density; high values often correlate with the "Overcrowding Rate" found in Domain 4.
+            **Total Households & Avg HH Size:** Count of unique households; average size is total population divided by total households.
             
-            **Sex Ratio:** Identifies gender imbalances in specific districts, which may be driven by migration for work (e.g., mining or plantations).
+            **Sex Ratio:** Males per 100 females; identifies gender imbalances.
             
-            **Dependency Ratio:** This is a critical indicator of economic burden. A high ratio suggests that a small number of working-age adults (15–64) are supporting a large number of children and elderly, signaling a need for increased social services and schools.
+            **Dependency Ratio:** Percentage of dependents (children under 15 + elderly 65+) relative to working-age population (15–64); a critical indicator of economic burden.
+            
+            **Age-Sex Distribution / Pyramid:** Disaggregation into 5-year age cohorts by sex, showing population structure.
             """)
             
-            # District-level breakdown
+            # District and Sector breakdown
             st.markdown("---")
-            st.subheader("Demographic Indicators by District")
+            st.subheader("Demographic Indicators by District & Sector")
             
-            # Group by district and calculate metrics
-            district_data = []
-            for district in site_hh_df['dist_name'].unique():
-                if pd.notna(district):
-                    district_hh = site_hh_df[site_hh_df['dist_name'] == district]
-                    district_hh_keys = district_hh['key']
-                    district_ind = site_ind_full[site_ind_full['parent_key'].isin(district_hh_keys)]
-                    
-                    d_hh = len(district_hh)
-                    d_pop = len(district_ind)
-                    d_avg = round(d_pop / d_hh, 2) if d_hh > 0 else 0
-                    
-                    d_males = (district_ind['sex'] == '01').sum()
-                    d_females = (district_ind['sex'] == '02').sum()
-                    d_sex_ratio = round((d_males / d_females * 100), 2) if d_females > 0 else 0
-                    
-                    d_dependents = ((district_ind['age_year'] < 15) | (district_ind['age_year'] >= 65)).sum()
-                    d_working = ((district_ind['age_year'] >= 15) & (district_ind['age_year'] <= 64)).sum()
-                    d_dep_ratio = round((d_dependents / d_working * 100), 2) if d_working > 0 else 0
-                    
-                    district_data.append({
-                        'Province': selected_site.replace('_', ' ').title(),
-                        'District': district,
-                        'Total_Households': d_hh,
-                        'Total_Population': d_pop,
-                        'Avg_HH_Size': d_avg,
-                        'Sex_Ratio': d_sex_ratio,
-                        'Dependency_Ratio': d_dep_ratio
-                    })
+            # SQL aggregation by district and sector using correct parent_key join
+            demographic_sql = """
+            SELECT 
+                h.pro_name AS province,
+                h.dist_name AS district,
+                h.sector AS sector_code,
+                CASE 
+                    WHEN h.sector = '01' THEN 'Urban'
+                    WHEN h.sector = '02' THEN 'Peri-Urban'
+                    WHEN h.sector = '03' THEN 'Settlement'
+                    WHEN h.sector = '04' THEN 'Rural'
+                    ELSE 'Unclassified'
+                END AS sector_label,
+                COUNT(DISTINCT h.dwelling_number) AS total_households,
+                COUNT(i.indiv_line_num) AS total_population,
+                ROUND(COUNT(i.indiv_line_num) * 1.0 / NULLIF(COUNT(DISTINCT h.dwelling_number), 0), 2) AS avg_household_size,
+                SUM(CASE WHEN i.sex = '01' THEN 1 ELSE 0 END) AS total_males,
+                SUM(CASE WHEN i.sex = '02' THEN 1 ELSE 0 END) AS total_females,
+                ROUND(
+                    (SUM(CASE WHEN i.sex = '01' THEN 1 ELSE 0 END) * 100.0) / 
+                    NULLIF(SUM(CASE WHEN i.sex = '02' THEN 1 ELSE 0 END), 0), 2
+                ) AS sex_ratio,
+                SUM(CASE WHEN COALESCE(i.age_year, i.est_age_years) < 15 THEN 1 ELSE 0 END) AS children_0_14,
+                SUM(CASE WHEN COALESCE(i.age_year, i.est_age_years) BETWEEN 15 AND 64 THEN 1 ELSE 0 END) AS working_age_15_64,
+                SUM(CASE WHEN COALESCE(i.age_year, i.est_age_years) >= 65 THEN 1 ELSE 0 END) AS elderly_65_plus,
+                ROUND(
+                    ((SUM(CASE WHEN COALESCE(i.age_year, i.est_age_years) < 15 OR COALESCE(i.age_year, i.est_age_years) >= 65 THEN 1 ELSE 0 END)) * 100.0) / 
+                    NULLIF(SUM(CASE WHEN COALESCE(i.age_year, i.est_age_years) BETWEEN 15 AND 64 THEN 1 ELSE 0 END), 0), 2
+                ) AS dependency_ratio
+            FROM households h
+            LEFT JOIN individuals i ON h.key = i.parent_key
+            WHERE h.pro_name = %s
+            GROUP BY h.pro_name, h.dist_name, h.sector
+            ORDER BY h.dist_name, h.sector;
+            """
             
-            if district_data:
-                demographic_df = pd.DataFrame(district_data)
-                
+            demographic_df = pd.read_sql(demographic_sql, engine, params=(selected_site,))
+            
+            if not demographic_df.empty:
                 # Display the data table
                 st.dataframe(
                     demographic_df,
                     column_config={
-                        "Province": st.column_config.TextColumn("Province"),
-                        "District": st.column_config.TextColumn("District"),
-                        "Total_Households": st.column_config.NumberColumn("Total Households", format="%d"),
-                        "Total_Population": st.column_config.NumberColumn("Total Population", format="%d"),
-                        "Avg_HH_Size": st.column_config.NumberColumn("Avg HH Size", format="%.2f"),
-                        "Sex_Ratio": st.column_config.NumberColumn("Sex Ratio (Males per 100 Females)", format="%.2f"),
-                        "Dependency_Ratio": st.column_config.NumberColumn("Dependency Ratio (%)", format="%.2f")
+                        "province": st.column_config.TextColumn("Province"),
+                        "district": st.column_config.TextColumn("District"),
+                        "sector_code": st.column_config.TextColumn("Sector Code"),
+                        "sector_label": st.column_config.TextColumn("Sector"),
+                        "total_households": st.column_config.NumberColumn("Total Households", format="%d"),
+                        "total_population": st.column_config.NumberColumn("Total Population", format="%d"),
+                        "avg_household_size": st.column_config.NumberColumn("Avg HH Size", format="%.2f"),
+                        "total_males": st.column_config.NumberColumn("Males", format="%d"),
+                        "total_females": st.column_config.NumberColumn("Females", format="%d"),
+                        "sex_ratio": st.column_config.NumberColumn("Sex Ratio (M/F*100)", format="%.2f"),
+                        "children_0_14": st.column_config.NumberColumn("Children 0-14", format="%d"),
+                        "working_age_15_64": st.column_config.NumberColumn("Working Age 15-64", format="%d"),
+                        "elderly_65_plus": st.column_config.NumberColumn("Elderly 65+", format="%d"),
+                        "dependency_ratio": st.column_config.NumberColumn("Dependency Ratio (%)", format="%.2f")
                     },
                     hide_index=True,
                     use_container_width=True
@@ -199,14 +261,166 @@ def main():
                 st.download_button(
                     label="Download Demographic Analysis (CSV)",
                     data=csv_demo,
-                    file_name=f"demographic_analysis_{selected_site.lower()}.csv",
+                    file_name=f"domain1_demography_{selected_site.lower()}.csv",
                     mime="text/csv"
                 )
             else:
-                st.info("No district data available for this site.")
+                st.info("No district/sector data available for this site.")
                 
         except Exception as e:
             st.error(f"Error running demographic analysis: {e}")
+            st.exception(e)
+        
+        # ==================== Education & Human Capital Analysis ====================
+        st.markdown("---")
+        st.header("Education & Human Capital Analysis")
+        
+        try:
+            # Load individual education data
+            edu_df = pd.read_sql(
+                """
+                SELECT parent_key, age_year, currently_school, highest_level_edu, sex, main_reason_not_sch, reason_not_furth_edu
+                FROM individuals
+                WHERE age_year >= 5
+                """,
+                engine
+            )
+            
+            # Filter for selected site
+            site_edu_df = edu_df[edu_df['parent_key'].isin(site_hh_df['key'])]
+            
+            if not site_edu_df.empty:
+                # Calculate site-wide education indicators
+                age_5_plus = site_edu_df[site_edu_df['age_year'] >= 5]
+                age_15_plus = site_edu_df[site_edu_df['age_year'] >= 15]
+                
+                # School Attendance Rate (Aged 5+)
+                attending = (age_5_plus['currently_school'] == '01').sum()
+                school_attendance_rate = round((attending / len(age_5_plus) * 100), 2) if len(age_5_plus) > 0 else 0
+                
+                # Primary Completion Rate (Aged 15+)
+                primary_completed = age_15_plus['highest_level_edu'].isin(['02','03','04','06','08','10']).sum()
+                primary_completion_rate = round((primary_completed / len(age_15_plus) * 100), 2) if len(age_15_plus) > 0 else 0
+                
+                # Gender Parity Index for Attendance
+                female_attending = ((age_5_plus['sex'] == '02') & (age_5_plus['currently_school'] == '01')).sum()
+                male_attending = ((age_5_plus['sex'] == '01') & (age_5_plus['currently_school'] == '01')).sum()
+                gpi = round((female_attending / male_attending), 2) if male_attending > 0 else 0
+                
+                # Fee-Related Dropouts
+                fee_dropouts = ((site_edu_df['main_reason_not_sch'] == '02') | (site_edu_df['reason_not_furth_edu'] == '02')).sum()
+                
+                # Display site-wide summary
+                st.subheader("Site-Wide Education Summary")
+                col1, col2, col3, col4 = st.columns(4)
+                with col1:
+                    st.metric("School Attendance Rate", f"{school_attendance_rate:.2f}%")
+                with col2:
+                    st.metric("Primary Completion Rate", f"{primary_completion_rate:.2f}%")
+                with col3:
+                    st.metric("Gender Parity Index", f"{gpi:.2f}")
+                with col4:
+                    st.metric("Fee-Related Dropouts", f"{fee_dropouts:,}")
+                
+                # District-level breakdown
+                st.markdown("---")
+                st.subheader("Education Indicators by District & Sector")
+                
+                district_edu_data = []
+                for district in site_hh_df['dist_name'].unique():
+                    if pd.notna(district):
+                        district_hh = site_hh_df[site_hh_df['dist_name'] == district]
+                        district_hh_keys = district_hh['key']
+                        district_ind = site_edu_df[site_edu_df['parent_key'].isin(district_hh_keys)]
+                        
+                        # Group by sector within district
+                        for sector in district_hh['sector'].unique():
+                            if pd.notna(sector):
+                                sector_hh = district_hh[district_hh['sector'] == sector]
+                                sector_hh_keys = sector_hh['key']
+                                sector_ind = district_ind[district_ind['parent_key'].isin(sector_hh_keys)]
+                                
+                                if not sector_ind.empty:
+                                    s_age_5 = sector_ind[sector_ind['age_year'] >= 5]
+                                    s_age_15 = sector_ind[sector_ind['age_year'] >= 15]
+                                    
+                                    s_attending = (s_age_5['currently_school'] == '01').sum()
+                                    s_att_rate = round((s_attending / len(s_age_5) * 100), 2) if len(s_age_5) > 0 else 0
+                                    
+                                    s_primary = s_age_15['highest_level_edu'].isin(['02','03','04','06','08','10']).sum()
+                                    s_prim_rate = round((s_primary / len(s_age_15) * 100), 2) if len(s_age_15) > 0 else 0
+                                    
+                                    s_female_att = ((s_age_5['sex'] == '02') & (s_age_5['currently_school'] == '01')).sum()
+                                    s_male_att = ((s_age_5['sex'] == '01') & (s_age_5['currently_school'] == '01')).sum()
+                                    s_gpi = round((s_female_att / s_male_att), 2) if s_male_att > 0 else 0
+                                    
+                                    s_fee = ((sector_ind['main_reason_not_sch'] == '02') | (sector_ind['reason_not_furth_edu'] == '02')).sum()
+                                    
+                                    district_edu_data.append({
+                                        'Province': selected_site.replace('_', ' ').title(),
+                                        'District': district,
+                                        'Sector': sector,
+                                        'School_Attendance_Rate': s_att_rate,
+                                        'Primary_Completion_Rate': s_prim_rate,
+                                        'Gender_Parity_Index': s_gpi,
+                                        'Fee_Related_Dropouts': s_fee
+                                    })
+                
+                if district_edu_data:
+                    edu_summary_df = pd.DataFrame(district_edu_data)
+                    
+                    # Display the data table
+                    st.dataframe(
+                        edu_summary_df,
+                        column_config={
+                            "Province": st.column_config.TextColumn("Province"),
+                            "District": st.column_config.TextColumn("District"),
+                            "Sector": st.column_config.NumberColumn("Sector", format="%d"),
+                            "School_Attendance_Rate": st.column_config.NumberColumn("School Attendance Rate (%)", format="%.2f"),
+                            "Primary_Completion_Rate": st.column_config.NumberColumn("Primary Completion Rate (%)", format="%.2f"),
+                            "Gender_Parity_Index": st.column_config.NumberColumn("Gender Parity Index", format="%.2f"),
+                            "Fee_Related_Dropouts": st.column_config.NumberColumn("Fee-Related Dropouts", format="%d")
+                        },
+                        hide_index=True,
+                        use_container_width=True
+                    )
+                    
+                    # Add download button
+                    csv_edu = edu_summary_df.to_csv(index=False).encode('utf-8')
+                    st.download_button(
+                        label="Download Education Analysis (CSV)",
+                        data=csv_edu,
+                        file_name=f"education_analysis_{selected_site.lower()}.csv",
+                        mime="text/csv"
+                    )
+                
+                # Key indicators explanation
+                st.markdown("---")
+                st.subheader("Key Indicators & Insights")
+                st.markdown("""
+                **School Attendance Rate:** Monitors the current enrollment levels. If this rate is low in specific districts, planners can drill down to main_reason_not_sch to see if the cause is "No school available nearby" (Code 01) or "Cultural reasons" (Code 04).
+                
+                **Primary Completion Rate:** Acts as a vital proxy for functional literacy and long-term economic potential.
+                
+                **Gender Parity Index (GPI):** Identifies where girls are being left behind in the education system, a major focus for development partners.
+                
+                **Fee-Related Dropouts:** Uses the specific variables main_reason_not_sch and reason_not_furth_edu to quantify the impact of school fees on educational attainment.
+                """)
+                
+                # Policy implications
+                st.subheader("Policy Implications & Recommendations")
+                st.markdown("""
+                **Education Authorities:** Districts showing a high number of "Fee-Related Dropouts" should be prioritized for government-funded tuition fee subsidies.
+                
+                **Infrastructure Planning:** Areas where "No school available nearby" is the top reason for non-attendance require urgent investment in new classrooms or satellite schools.
+                
+                **Gender Equality:** A low GPI in rural sectors (Code 04) suggests the need for targeted social campaigns to encourage female enrollment.
+                """)
+            else:
+                st.info("No education data available for this site.")
+                
+        except Exception as e:
+            st.error(f"Error running education analysis: {e}")
             st.exception(e)
 
     # ==================== TAB 1: Overview ====================
