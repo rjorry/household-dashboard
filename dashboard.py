@@ -108,9 +108,19 @@ def main():
             site_hh_full = hh_full_df[hh_full_df['pro_name'].str.lower() == selected_site.lower()].copy()
             site_ind_full = ind_full_df[ind_full_df['parent_key'].isin(site_hh_full['key'])].copy()
             
-            # Normalize sex codes to handle '01'/'02', '1'/'2', 1/2, etc.
-            site_ind_full['sex_norm'] = site_ind_full['sex'].astype(str).str.strip().str.zfill(2)
-            site_ind_full['sex_norm'] = site_ind_full['sex_norm'].replace({'00': '01'})
+            # Robust sex code normalization
+            def normalize_sex(val):
+                if pd.isna(val):
+                    return '99'
+                s = str(val).strip().upper()
+                if s in ('01', '1', 'M', 'MALE', 'BOY', 'M.'):
+                    return '01'
+                elif s in ('02', '2', 'F', 'FEMALE', 'GIRL', 'F.'):
+                    return '02'
+                else:
+                    return '99'
+            
+            site_ind_full['sex_norm'] = site_ind_full['sex'].apply(normalize_sex)
             
             # Calculate site-wide demographic indicators
             total_hh = site_hh_full['dwelling_number'].nunique()
@@ -149,35 +159,41 @@ def main():
             st.subheader("Age-Sex Distribution (Population Pyramid)")
             
             if not site_ind_full.empty:
-                # Create 5-year age cohorts
-                bins = list(range(0, 81, 5)) + [np.inf]
-                labels = [f"{i}-{i+4}" for i in range(0, 80, 5)] + ["80+"]
-                site_ind_full['age_group'] = pd.cut(site_ind_full['final_age'], bins=bins, labels=labels, right=False)
+                # Create 5-year age cohorts for individuals with valid age and sex
+                valid_pyramid = site_ind_full.dropna(subset=['final_age']).copy()
+                valid_pyramid = valid_pyramid[valid_pyramid['sex_norm'].isin(['01', '02'])]
                 
-                pyramid_data = site_ind_full.groupby(['age_group', 'sex_norm'], observed=True).size().reset_index(name='count')
-                pyramid_data['count'] = pyramid_data['count'].fillna(0)
-                
-                # Pivot for pyramid
-                male_data = pyramid_data[pyramid_data['sex_norm'] == '01'].set_index('age_group')['count'].reindex(labels).fillna(0) * -1
-                female_data = pyramid_data[pyramid_data['sex_norm'] == '02'].set_index('age_group')['count'].reindex(labels).fillna(0)
-                
-                pyramid_chart = pd.DataFrame({
-                    'Age Group': labels,
-                    'Males': male_data.values,
-                    'Females': female_data.values
-                })
-                
-                fig = px.bar(
-                    pyramid_chart,
-                    y='Age Group',
-                    x=['Males', 'Females'],
-                    orientation='h',
-                    barmode='relative',
-                    title=f"Population Pyramid – {selected_site.replace('_', ' ').title()}",
-                    color_discrete_map={'Males': '#1f77b4', 'Females': '#e377c2'}
-                )
-                fig.update_layout(xaxis_title="Population", yaxis_title="Age Group", legend_title="Sex")
-                st.plotly_chart(fig, use_container_width=True)
+                if not valid_pyramid.empty:
+                    bins = list(range(0, 81, 5)) + [np.inf]
+                    labels = [f"{i}-{i+4}" for i in range(0, 80, 5)] + ["80+"]
+                    valid_pyramid['age_group'] = pd.cut(valid_pyramid['final_age'], bins=bins, labels=labels, right=False)
+                    
+                    pyramid_data = valid_pyramid.groupby(['age_group', 'sex_norm'], observed=True).size().reset_index(name='count')
+                    pyramid_data['count'] = pyramid_data['count'].fillna(0)
+                    
+                    # Pivot for pyramid
+                    male_data = pyramid_data[pyramid_data['sex_norm'] == '01'].set_index('age_group')['count'].reindex(labels).fillna(0) * -1
+                    female_data = pyramid_data[pyramid_data['sex_norm'] == '02'].set_index('age_group')['count'].reindex(labels).fillna(0)
+                    
+                    pyramid_chart = pd.DataFrame({
+                        'Age Group': labels,
+                        'Males': male_data.values,
+                        'Females': female_data.values
+                    })
+                    
+                    fig = px.bar(
+                        pyramid_chart,
+                        y='Age Group',
+                        x=['Males', 'Females'],
+                        orientation='h',
+                        barmode='relative',
+                        title=f"Population Pyramid – {selected_site.replace('_', ' ').title()}",
+                        color_discrete_map={'Males': '#1f77b4', 'Females': '#e377c2'}
+                    )
+                    fig.update_layout(xaxis_title="Population", yaxis_title="Age Group", legend_title="Sex")
+                    st.plotly_chart(fig, use_container_width=True)
+                else:
+                    st.info("No valid age and sex data available to build the population pyramid.")
             
             # Key indicators explanation
             st.markdown("---")
