@@ -1919,7 +1919,7 @@ def main():
         asset_label_map = {
             'a': 'Tractor', 'b': 'Vehicle', 'c': 'Motorcycle', 'd': 'Boat', 'e': 'Canoe',
             'f': 'Bicycle', 'g': 'Generator', 'h': 'Laptop', 'i': 'Fridge', 'j': 'Freezer',
-            'k': 'TV', 'm': 'Radio', 'o': 'Bed', 'p': 'Mattress', 'r': 'AC', 's': 'Cooker',
+            'k': 'TV','l': 'Smart TV', 'm': 'Radio','n': 'Table/Chair Set', 'o': 'Bed', 'p': 'Mattress','q': 'Cupboard', 'r': 'AC', 's': 'Cooker',
             't': 'Washer', 'u': 'Mobile phone (low)', 'v': 'Mobile phone (mid)',
             'w': 'Mobile phone (high)', 'x': 'Sewing machine', 'y': 'Construction machinery'
         }
@@ -2178,6 +2178,293 @@ def main():
             st.info("Asset / wealth columns (three_4_12, three_4_21, three_4_22, three_4_16/17/18/19, three_4_13/14) are not available in the current dataset. Domain 7 analysis is not possible.")
         else:
             st.error(f"Error running assets & wealth analysis: {e}")
+
+    st.markdown("---")
+    st.header(f"Domain 8: Income & Economic Welfare – {selected_site.replace('_', ' ').title()}")
+
+    try:
+        # Discover actual household income/economic column names from the database
+        income_cols_df = pd.read_sql(
+            """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_name = 'households'
+            """,
+            engine
+        )
+        income_cols = income_cols_df['column_name'].tolist()
+
+        def find_col_income(keywords):
+            for c in income_cols:
+                c_lower = c.lower()
+                if all(k in c_lower for k in keywords):
+                    return c
+            return None
+
+        i51 = find_col_income(['three_5_1'])
+        i52 = find_col_income(['three_5_2'])
+        i54 = find_col_income(['three_5_4'])
+        i55 = find_col_income(['three_5_5'])
+        i413 = find_col_income(['three_4_13'])
+        i414 = find_col_income(['three_4_14'])
+
+        required = [
+            ('three_5_4', i54),
+            ('three_5_5', i55)
+        ]
+        missing = [n for n, c in required if c is None]
+
+        if missing:
+            raise Exception(
+                f"Could not find one or more income columns. Missing: {', '.join(missing)}. "
+                f"Columns found: {', '.join(income_cols[:30])}"
+            )
+
+        def sel_expr_income(col, alias):
+            return f'h."{col}" AS {alias}' if col else f'NULL AS {alias}'
+
+        # Load household-level income data using the discovered column names
+        income_sql = f'''
+            SELECT 
+                h.key, h.pro_name, h.dist_name, h.sector,
+                {sel_expr_income(i51, 'three_5_1')},
+                {sel_expr_income(i52, 'three_5_2')},
+                {sel_expr_income(i54, 'three_5_4')},
+                {sel_expr_income(i55, 'three_5_5')},
+                {sel_expr_income(i413, 'three_4_13')},
+                {sel_expr_income(i414, 'three_4_14')}
+            FROM households h
+            WHERE h.pro_name = %s
+        '''
+        income_df = pd.read_sql(income_sql, engine, params=(selected_site,))
+
+        # Convert numeric income and food spend columns, treat 888 as missing
+        for col in ['three_5_4', 'three_5_5']:
+            income_df[col] = pd.to_numeric(income_df[col], errors='coerce')
+            income_df.loc[income_df[col] >= 888, col] = np.nan
+
+        # Normalize categorical codes
+        for col in ['three_5_1', 'three_5_2', 'three_4_13', 'three_4_14']:
+            income_df[col] = (
+                income_df[col]
+                .astype('string')
+                .fillna('')
+                .str.strip()
+                .str.replace(r'\.0$', '', regex=True)
+                .str.zfill(2)
+            )
+
+        total_hh = len(income_df)
+
+        # Income and food indicators
+        mean_income = round(income_df['three_5_4'].mean(), 2)
+        median_income = round(income_df['three_5_4'].median(), 2)
+        mean_food = round(income_df['three_5_5'].mean(), 2)
+        median_food = round(income_df['three_5_5'].median(), 2)
+
+        # Food expenditure share (%)
+        share_df = income_df[['three_5_4', 'three_5_5']].dropna()
+        share_df['food_share'] = (share_df['three_5_5'] / share_df['three_5_4'] * 100).replace([np.inf, -np.inf], np.nan)
+        share_df = share_df[share_df['three_5_4'] > 0]
+        mean_food_share = round(share_df['food_share'].mean(), 2) if not share_df.empty else None
+        high_food_burden = (share_df['food_share'] > 60).sum()
+        high_food_rate = round(high_food_burden * 100.0 / total_hh, 2) if total_hh > 0 else 0
+
+        # Income source
+        income_source_map = {
+            '01': 'Paid employment (wages)',
+            '02': 'Selling cash crops / fishing',
+            '03': 'Informal sector'
+        }
+        source_counts = income_df.loc[income_df['three_5_1'].ne(''), 'three_5_1'].value_counts()
+
+        # Diversification
+        div_rate = round((income_df['three_5_2'] == '01').sum() * 100.0 / total_hh, 2) if total_hh > 0 else 0
+
+        # Internet / data spending
+        internet_rate = round((income_df['three_4_13'] == '01').sum() * 100.0 / total_hh, 2) if total_hh > 0 else 0
+        high_data_spend = round(
+            ((income_df['three_4_14'].isin({'04', '05'})) & (income_df['three_4_13'] == '01')).sum() * 100.0 /
+            max((income_df['three_4_13'] == '01').sum(), 1), 2
+        )
+
+        # Site-wide metrics
+        st.subheader("Site-Wide Income & Economic Welfare Summary")
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.metric("Mean Fortnightly Income (PGK)", f"{mean_income:,.2f}" if pd.notna(mean_income) else "n/a")
+            st.metric("Median Fortnightly Income (PGK)", f"{median_income:,.2f}" if pd.notna(median_income) else "n/a")
+        with c2:
+            st.metric("Mean Food Expenditure (PGK)", f"{mean_food:,.2f}" if pd.notna(mean_food) else "n/a")
+            st.metric("Median Food Expenditure (PGK)", f"{median_food:,.2f}" if pd.notna(median_food) else "n/a")
+        with c3:
+            st.metric("Food Expenditure Share", f"{mean_food_share:.2f}%" if pd.notna(mean_food_share) else "n/a")
+            st.metric("High Food Burden (>60%)", f"{high_food_rate:.2f}%")
+
+        c4, c5, c6 = st.columns(3)
+        with c4:
+            st.metric("Income Diversification", f"{div_rate:.2f}%")
+        with c5:
+            st.metric("Internet Access", f"{internet_rate:.2f}%")
+        with c6:
+            st.metric("High Data Spend (>K50/wk)", f"{high_data_spend:.2f}%")
+
+        # Visualizations
+        st.markdown("---")
+        st.subheader("Income & Expenditure")
+
+        source_data = pd.DataFrame([
+            {'Income Source': income_source_map.get(k, f'Code {k}'), 'Count': int(v)}
+            for k, v in source_counts.items()
+        ])
+
+        col1, col2 = st.columns(2)
+        with col1:
+            if not income_df['three_5_4'].dropna().empty:
+                hist_income = px.histogram(
+                    income_df,
+                    x='three_5_4',
+                    nbins=20,
+                    title='Fortnightly Income Distribution (PGK)',
+                    color_discrete_sequence=['#3b6e9b']
+                )
+                hist_income.update_xaxes(title_text='Fortnightly income (PGK)')
+                hist_income.update_yaxes(title_text='Number of households')
+                st.plotly_chart(hist_income, use_container_width=True)
+            else:
+                st.info("No income data available.")
+
+            if not source_data.empty:
+                fig_source = px.bar(
+                    source_data,
+                    x='Income Source',
+                    y='Count',
+                    title='Main Household Income Source',
+                    color_discrete_sequence=['#3b6e9b']
+                )
+                fig_source.update_xaxes(tickangle=45)
+                st.plotly_chart(fig_source, use_container_width=True)
+            else:
+                st.info("No income source data available.")
+
+        with col2:
+            if not income_df['three_5_5'].dropna().empty:
+                hist_food = px.histogram(
+                    income_df,
+                    x='three_5_5',
+                    nbins=20,
+                    title='Fortnightly Food Expenditure Distribution (PGK)',
+                    color_discrete_sequence=['#3b6e9b']
+                )
+                hist_food.update_xaxes(title_text='Fortnightly food spend (PGK)')
+                hist_food.update_yaxes(title_text='Number of households')
+                st.plotly_chart(hist_food, use_container_width=True)
+            else:
+                st.info("No food expenditure data available.")
+
+            if not share_df.empty:
+                hist_share = px.histogram(
+                    share_df,
+                    x='food_share',
+                    nbins=20,
+                    title='Food Expenditure Share Distribution (%)',
+                    color_discrete_sequence=['#3b6e9b']
+                )
+                hist_share.update_xaxes(title_text='Food share of income (%)')
+                hist_share.update_yaxes(title_text='Number of households')
+                st.plotly_chart(hist_share, use_container_width=True)
+            else:
+                st.info("No food share data available.")
+
+        # District and sector breakdown
+        st.markdown("---")
+        st.subheader("Income & Economic Welfare by District & Sector")
+
+        income_district_data = []
+        for (district, sector), group in income_df.groupby(['dist_name', 'sector']):
+            total = len(group)
+            g_mean_income = round(group['three_5_4'].mean(), 2)
+            g_median_income = round(group['three_5_4'].median(), 2)
+            g_mean_food = round(group['three_5_5'].mean(), 2)
+
+            g_share = group[['three_5_4', 'three_5_5']].dropna()
+            g_share = g_share[g_share['three_5_4'] > 0]
+            g_share['food_share'] = (g_share['three_5_5'] / g_share['three_5_4'] * 100).replace([np.inf, -np.inf], np.nan)
+            g_mean_share = round(g_share['food_share'].mean(), 2) if not g_share.empty else None
+            g_high_burden = round((g_share['food_share'] > 60).sum() * 100.0 / total, 2) if total > 0 else 0
+
+            sector_map = {'01': 'Urban', '02': 'Peri-Urban', '03': 'Settlement', '04': 'Rural'}
+            income_district_data.append({
+                'District': district,
+                'Sector Code': sector,
+                'Sector': sector_map.get(str(sector).zfill(2), 'Unclassified'),
+                'Households': total,
+                'Mean Income (PGK)': g_mean_income if pd.notna(g_mean_income) else 0,
+                'Median Income (PGK)': g_median_income if pd.notna(g_median_income) else 0,
+                'Mean Food Spend (PGK)': g_mean_food if pd.notna(g_mean_food) else 0,
+                'Food Share (%)': g_mean_share if pd.notna(g_mean_share) else 0,
+                'High Food Burden (%)': g_high_burden,
+                'Wages (%)': round((group['three_5_1'] == '01').sum() * 100.0 / total, 2) if total > 0 else 0,
+                'Cash Crops/Fishing (%)': round((group['three_5_1'] == '02').sum() * 100.0 / total, 2) if total > 0 else 0,
+                'Informal (%)': round((group['three_5_1'] == '03').sum() * 100.0 / total, 2) if total > 0 else 0,
+                'Income Diversification (%)': round((group['three_5_2'] == '01').sum() * 100.0 / total, 2) if total > 0 else 0
+            })
+
+        income_district_df = pd.DataFrame(income_district_data)
+        if not income_district_df.empty:
+            st.dataframe(
+                income_district_df,
+                column_config={
+                    'District': st.column_config.TextColumn('District'),
+                    'Sector Code': st.column_config.TextColumn('Sector Code'),
+                    'Sector': st.column_config.TextColumn('Sector'),
+                    'Households': st.column_config.NumberColumn('Households', format='%d'),
+                    'Mean Income (PGK)': st.column_config.NumberColumn('Mean Income (PGK)', format='%.2f'),
+                    'Median Income (PGK)': st.column_config.NumberColumn('Median Income (PGK)', format='%.2f'),
+                    'Mean Food Spend (PGK)': st.column_config.NumberColumn('Mean Food Spend (PGK)', format='%.2f'),
+                    'Food Share (%)': st.column_config.NumberColumn('Food Share (%)', format='%.2f'),
+                    'High Food Burden (%)': st.column_config.NumberColumn('High Food Burden (%)', format='%.2f'),
+                    'Wages (%)': st.column_config.NumberColumn('Wages (%)', format='%.2f'),
+                    'Cash Crops/Fishing (%)': st.column_config.NumberColumn('Cash Crops/Fishing (%)', format='%.2f'),
+                    'Informal (%)': st.column_config.NumberColumn('Informal (%)', format='%.2f'),
+                    'Income Diversification (%)': st.column_config.NumberColumn('Income Diversification (%)', format='%.2f')
+                },
+                hide_index=True,
+                use_container_width=True
+            )
+
+            csv_income = income_district_df.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label='Download Income & Welfare Analysis (CSV)',
+                data=csv_income,
+                file_name=f'domain8_income_welfare_{selected_site.lower()}.csv',
+                mime='text/csv'
+            )
+        else:
+            st.info("No district/sector income data available for this site.")
+
+        # Key indicators explanation
+        st.markdown("---")
+        st.subheader("Key Indicators Captured")
+        st.markdown("""
+        **Fortnightly Household Income:** Mean and median estimated total cash income received by households over a two-week period, in Papua New Guinea Kina (PGK).
+
+        **Food Expenditure Share (Engel's Law Proxy):** The percentage of fortnightly income spent on food. Higher values indicate greater economic vulnerability, with shares above 60% classified as high food burden.
+
+        **High Food Burden Rate:** Percentage of households spending more than 60% of their income on food purchases.
+
+        **Main Income Source:** Distribution of primary household income channels, including paid employment, cash crops/fishing, and informal sector activities.
+
+        **Income Source Diversification:** Percentage of households reporting two or more income sources, indicating greater resilience to economic shocks.
+
+        **Digital Financial & Communications Expenditure:** Percentage of households with internet access and the share spending more than K50 per week on data/communication.
+        """)
+
+    except Exception as e:
+        if any(col in str(e) for col in ['three_5_1', 'three_5_2', 'three_5_4', 'three_5_5', 'three_4_13', 'three_4_14']):
+            st.info("Income / welfare columns (three_5_1/2/4/5, three_4_13/14) are not available in the current dataset. Domain 8 analysis is not possible.")
+        else:
+            st.error(f"Error running income & welfare analysis: {e}")
 
     # ==================== TAB 1: Overview ====================
     with tab1:
