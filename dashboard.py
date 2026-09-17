@@ -1479,8 +1479,8 @@ def main():
             '02': 'Bleach / Chlorine',
             '03': 'Cloth filter',
             '04': 'Ceramic / Sand filter',
-            '05': 'Solar'
-            '06': 'Let Stand and Settle'
+            '05': 'Solar',
+            '06': 'Let Stand and Settle',
             '07': 'Others'
         }
         treatment_counts = wash_df.loc[wash_df['three_1_8'].ne(''), 'three_1_8'].value_counts()
@@ -1495,7 +1495,7 @@ def main():
             '02': 'Adult man',
             '03': 'Female child',
             '04': 'Male child',
-            '05': 'Not Relevant'
+            '05': 'Not Relevant',
             '06': 'Others'
         }
         collector_counts = wash_df.loc[wash_df['three_1_6'].ne(''), 'three_1_6'].value_counts()
@@ -1718,9 +1718,9 @@ def main():
             '03': 'Solar power',
             '04': 'Candle',
             '05': 'Kerosene lamp',
-            '06': 'Open fire'
-            '07': 'Others'
-            '888': 'Dont Know'
+            '06': 'Open fire',
+            '07': 'Others',
+            '888': "Don't Know"
         }
         lighting_counts = energy_df.loc[energy_df['three_4_11'].ne(''), 'three_4_11'].value_counts()
         lighting_data = pd.DataFrame([
@@ -1736,7 +1736,7 @@ def main():
             '04': 'Kerosene',
             '05': 'Charcoal',
             '06': 'Wood / Biomass',
-            '07': 'No Food cooked in HH'
+            '07': 'No Food cooked in HH',
             '08': 'Others'
         }
         cooking_counts = energy_df.loc[energy_df['three_4_8'].ne(''), 'three_4_8'].value_counts()
