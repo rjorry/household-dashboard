@@ -1480,6 +1480,8 @@ def main():
             '03': 'Cloth filter',
             '04': 'Ceramic / Sand filter',
             '05': 'Solar'
+            '06': 'Let Stand and Settle'
+            '07': 'Others'
         }
         treatment_counts = wash_df.loc[wash_df['three_1_8'].ne(''), 'three_1_8'].value_counts()
         treatment_data = pd.DataFrame([
@@ -1494,6 +1496,7 @@ def main():
             '03': 'Female child',
             '04': 'Male child',
             '05': 'Not Relevant'
+            '06': 'Others'
         }
         collector_counts = wash_df.loc[wash_df['three_1_6'].ne(''), 'three_1_6'].value_counts()
         collector_data = pd.DataFrame([
@@ -1716,6 +1719,8 @@ def main():
             '04': 'Candle',
             '05': 'Kerosene lamp',
             '06': 'Open fire'
+            '07': 'Others'
+            '888': 'Dont Know'
         }
         lighting_counts = energy_df.loc[energy_df['three_4_11'].ne(''), 'three_4_11'].value_counts()
         lighting_data = pd.DataFrame([
@@ -1731,7 +1736,8 @@ def main():
             '04': 'Kerosene',
             '05': 'Charcoal',
             '06': 'Wood / Biomass',
-            '07': 'Other'
+            '07': 'No Food cooked in HH'
+            '08': 'Others'
         }
         cooking_counts = energy_df.loc[energy_df['three_4_8'].ne(''), 'three_4_8'].value_counts()
         cooking_data = pd.DataFrame([
@@ -1850,6 +1856,328 @@ def main():
             st.info("Energy columns (three_4_8, three_4_11) are not available in the current dataset. Domain 6 analysis is not possible.")
         else:
             st.error(f"Error running energy analysis: {e}")
+
+    st.markdown("---")
+    st.header(f"Domain 7: Assets, Wealth & Financial Inclusion – {selected_site.replace('_', ' ').title()}")
+
+    try:
+        # Discover actual household asset/financial column names from the database
+        asset_cols_df = pd.read_sql(
+            """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_name = 'households'
+            """,
+            engine
+        )
+        asset_cols = asset_cols_df['column_name'].tolist()
+
+        def find_col_asset(keywords):
+            for c in asset_cols:
+                c_lower = c.lower()
+                if all(k in c_lower for k in keywords):
+                    return c
+            return None
+
+        t12_cols = [c for c in asset_cols if 'three_4_12' in c.lower()]
+        t21_cols = [c for c in asset_cols if 'three_4_21' in c.lower()]
+        t22 = find_col_asset(['three_4_22'])
+        t16 = find_col_asset(['three_4_16'])
+        t17 = find_col_asset(['three_4_17'])
+        t18 = find_col_asset(['three_4_18'])
+        t19 = find_col_asset(['three_4_19'])
+        t13 = find_col_asset(['three_4_13'])
+        t14 = find_col_asset(['three_4_14'])
+
+        if not t12_cols:
+            raise Exception("Could not find any three_4_12 asset columns.")
+
+        def alias(c):
+            return c.lower().replace('consent_hhses_', '').replace(' ', '_')
+
+        def sel_expr_asset(c, a):
+            return f'h."{c}" AS {a}'
+
+        select_parts = ['h.key, h.pro_name, h.dist_name, h.sector']
+        for c in t12_cols:
+            select_parts.append(sel_expr_asset(c, alias(c)))
+        for c in t21_cols:
+            select_parts.append(sel_expr_asset(c, alias(c)))
+        for c, a in [(t22, 'three_4_22'), (t16, 'three_4_16'), (t17, 'three_4_17'),
+                     (t18, 'three_4_18'), (t19, 'three_4_19'), (t13, 'three_4_13'), (t14, 'three_4_14')]:
+            select_parts.append(f'{sel_expr_asset(c, a)}' if c else f'NULL AS {a}')
+
+        # Load household-level asset data using the discovered column names
+        asset_sql = f'''
+            SELECT {', '.join(select_parts)}
+            FROM households h
+            WHERE h.pro_name = %s
+        '''
+        asset_df = pd.read_sql(asset_sql, engine, params=(selected_site,))
+
+        # Asset and livestock label maps
+        asset_label_map = {
+            'a': 'Tractor', 'b': 'Vehicle', 'c': 'Motorcycle', 'd': 'Boat', 'e': 'Canoe',
+            'f': 'Bicycle', 'g': 'Generator', 'h': 'Laptop', 'i': 'Fridge', 'j': 'Freezer',
+            'k': 'TV', 'm': 'Radio', 'o': 'Bed', 'p': 'Mattress', 'r': 'AC', 's': 'Cooker',
+            't': 'Washer', 'u': 'Mobile phone (low)', 'v': 'Mobile phone (mid)',
+            'w': 'Mobile phone (high)', 'x': 'Sewing machine', 'y': 'Construction machinery'
+        }
+        livestock_label_map = {
+            'a': 'Cows', 'b': 'Goats', 'c': 'Sheep', 'd': 'Ducks', 'e': 'Pigs', 'f': 'Poultry/Others'
+        }
+
+        # Convert asset counts to numeric, treating 888 and blanks as 0
+        t12_aliases = [alias(c) for c in t12_cols]
+        t21_aliases = [alias(c) for c in t21_cols]
+        for col in t12_aliases + t21_aliases + ['three_4_17', 'three_4_19']:
+            asset_df[col] = pd.to_numeric(asset_df[col], errors='coerce')
+            asset_df[col] = asset_df[col].replace(888, np.nan).fillna(0)
+            asset_df.loc[asset_df[col] < 0, col] = 0
+
+        # Total asset score
+        asset_df['total_asset_score'] = asset_df[t12_aliases].sum(axis=1)
+
+        # Total livestock count (simplified TLU; no species weights provided)
+        asset_df['total_livestock'] = asset_df[t21_aliases].sum(axis=1)
+
+        # Normalize categorical codes
+        for col in ['three_4_22', 'three_4_16', 'three_4_18', 'three_4_13', 'three_4_14']:
+            asset_df[col] = (
+                asset_df[col]
+                .astype('string')
+                .fillna('')
+                .str.strip()
+                .str.replace(r'\.0$', '', regex=True)
+                .str.zfill(2)
+            )
+
+        total_hh = len(asset_df)
+
+        # Financial / agricultural / digital indicators
+        bank_account_rate = round((asset_df['three_4_22'] == '01').sum() * 100.0 / total_hh, 2) if total_hh > 0 else 0
+        cash_crop_rate = round((asset_df['three_4_16'] == '01').sum() * 100.0 / total_hh, 2) if total_hh > 0 else 0
+        aquaculture_rate = round((asset_df['three_4_18'] == '01').sum() * 100.0 / total_hh, 2) if total_hh > 0 else 0
+        internet_rate = round((asset_df['three_4_13'] == '01').sum() * 100.0 / total_hh, 2) if total_hh > 0 else 0
+        high_data_spend = round(
+            ((asset_df['three_4_14'].isin({'04', '05'})) & (asset_df['three_4_13'] == '01')).sum() * 100.0 /
+            max((asset_df['three_4_13'] == '01').sum(), 1), 2
+        )
+        avg_cash_crop_sqm = round(asset_df.loc[asset_df['three_4_17'] > 0, 'three_4_17'].mean(), 0)
+        avg_aqua_sqm = round(asset_df.loc[asset_df['three_4_19'] > 0, 'three_4_19'].mean(), 0)
+
+        # Simple PCA wealth index on durable asset counts
+        X = asset_df[t12_aliases].copy()
+        non_zero = X.std() > 0
+        X = X.loc[:, non_zero]
+        if not X.empty and X.shape[0] > 1:
+            X_std = (X - X.mean()) / X.std()
+            X_std = X_std.replace([np.inf, -np.inf], np.nan).fillna(0)
+            try:
+                _, _, vh = np.linalg.svd(X_std, full_matrices=False)
+                pc1 = X_std.to_numpy() @ vh[0]
+                asset_df['wealth_score'] = pc1
+            except Exception:
+                asset_df['wealth_score'] = X.sum(axis=1)
+        else:
+            asset_df['wealth_score'] = asset_df['total_asset_score']
+
+        # Rank into quintiles
+        if asset_df['wealth_score'].nunique() >= 5:
+            asset_df['wealth_quintile'] = pd.qcut(
+                asset_df['wealth_score'], 5,
+                labels=['Q1 Poorest', 'Q2 Poorer', 'Q3 Middle', 'Q4 Richer', 'Q5 Richest']
+            )
+        else:
+            asset_df['wealth_quintile'] = 'n/a'
+
+        # Site-wide metrics
+        st.subheader("Site-Wide Assets, Wealth & Financial Inclusion Summary")
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.metric("Avg. Durable Assets per HH", f"{asset_df['total_asset_score'].mean():.1f}")
+            st.metric("Avg. Livestock per HH", f"{asset_df['total_livestock'].mean():.1f}")
+        with c2:
+            st.metric("Bank Account Ownership", f"{bank_account_rate:.2f}%")
+            st.metric("Internet Access", f"{internet_rate:.2f}%")
+        with c3:
+            st.metric("Cash-Crop Land Ownership", f"{cash_crop_rate:.2f}%")
+            st.metric("Aquaculture Ownership", f"{aquaculture_rate:.2f}%")
+
+        st.metric("High Data Spending (>K50/week)", f"{high_data_spend:.2f}%")
+        if pd.notna(avg_cash_crop_sqm):
+            st.metric("Avg. Cash-Crop Land (m²)", f"{avg_cash_crop_sqm:,.0f}")
+        if pd.notna(avg_aqua_sqm):
+            st.metric("Avg. Aquaculture Land (m²)", f"{avg_aqua_sqm:,.0f}")
+
+        # Visualizations
+        st.markdown("---")
+        st.subheader("Assets, Livestock & Wealth")
+
+        # Top owned assets
+        asset_counts = asset_df[t12_aliases].sum().sort_values(ascending=False)
+        asset_count_data = pd.DataFrame([
+            {
+                'Asset': asset_label_map.get(alias(c)[-1], alias(c)),
+                'Total Owned': int(v)
+            }
+            for c, v in zip(t12_cols, asset_counts)
+        ])
+
+        livestock_counts = asset_df[t21_aliases].sum().sort_values(ascending=False)
+        livestock_count_data = pd.DataFrame([
+            {
+                'Livestock': livestock_label_map.get(alias(c)[-1], alias(c)),
+                'Total Owned': int(v)
+            }
+            for c, v in zip(t21_cols, livestock_counts)
+        ])
+
+        # Internet expenditure map
+        internet_map = {
+            '00': 'No Response', '01': '< K10', '02': 'K10–30', '03': 'K30–50',
+            '04': 'K50–100', '05': '> K100', '888': "Don't Know"
+        }
+        internet_counts = asset_df.loc[asset_df['three_4_14'].ne(''), 'three_4_14'].value_counts()
+        internet_data = pd.DataFrame([
+            {'Weekly Spend': internet_map.get(k, f'Code {k}'), 'Count': int(v)}
+            for k, v in internet_counts.items()
+        ])
+
+        # Wealth quintiles
+        quintile_counts = asset_df['wealth_quintile'].value_counts().sort_index()
+        quintile_data = pd.DataFrame([
+            {'Quintile': k, 'Households': int(v)} for k, v in quintile_counts.items()
+        ])
+
+        col1, col2 = st.columns(2)
+        with col1:
+            if not asset_count_data.empty:
+                fig_asset = px.bar(
+                    asset_count_data,
+                    x='Asset',
+                    y='Total Owned',
+                    title='Durable Assets Owned',
+                    color_discrete_sequence=['#3b6e9b']
+                )
+                fig_asset.update_xaxes(tickangle=45)
+                st.plotly_chart(fig_asset, use_container_width=True)
+            else:
+                st.info("No durable asset data available.")
+
+            if not internet_data.empty:
+                fig_int = px.bar(
+                    internet_data,
+                    x='Weekly Spend',
+                    y='Count',
+                    title='Weekly Internet/Data Spending',
+                    color_discrete_sequence=['#3b6e9b']
+                )
+                fig_int.update_xaxes(tickangle=45)
+                st.plotly_chart(fig_int, use_container_width=True)
+            else:
+                st.info("No internet spending data available.")
+
+        with col2:
+            if not livestock_count_data.empty:
+                fig_live = px.bar(
+                    livestock_count_data,
+                    x='Livestock',
+                    y='Total Owned',
+                    title='Livestock Owned',
+                    color_discrete_sequence=['#3b6e9b']
+                )
+                fig_live.update_xaxes(tickangle=45)
+                st.plotly_chart(fig_live, use_container_width=True)
+            else:
+                st.info("No livestock data available.")
+
+            if not quintile_data.empty and not quintile_data['Quintile'].isin(['n/a']).all():
+                fig_q = px.bar(
+                    quintile_data,
+                    x='Quintile',
+                    y='Households',
+                    title='Household Wealth Quintile Distribution',
+                    color_discrete_sequence=['#3b6e9b']
+                )
+                st.plotly_chart(fig_q, use_container_width=True)
+            else:
+                st.info("Not enough variation to compute wealth quintiles.")
+
+        # District and sector breakdown
+        st.markdown("---")
+        st.subheader("Assets & Financial Inclusion by District & Sector")
+
+        asset_district_data = []
+        for (district, sector), group in asset_df.groupby(['dist_name', 'sector']):
+            total = len(group)
+            asset_district_data.append({
+                'District': district,
+                'Sector Code': sector,
+                'Sector': {'01': 'Urban', '02': 'Peri-Urban', '03': 'Settlement', '04': 'Rural'}.get(str(sector).zfill(2), 'Unclassified'),
+                'Households': total,
+                'Avg Assets/HH': round(group['total_asset_score'].mean(), 1),
+                'Avg Livestock/HH': round(group['total_livestock'].mean(), 1),
+                'Bank Account (%)': round((group['three_4_22'] == '01').sum() * 100.0 / total, 2) if total > 0 else 0,
+                'Internet (%)': round((group['three_4_13'] == '01').sum() * 100.0 / total, 2) if total > 0 else 0,
+                'Cash-Crop Land (%)': round((group['three_4_16'] == '01').sum() * 100.0 / total, 2) if total > 0 else 0,
+                'Aquaculture (%)': round((group['three_4_18'] == '01').sum() * 100.0 / total, 2) if total > 0 else 0
+            })
+
+        asset_district_df = pd.DataFrame(asset_district_data)
+        if not asset_district_df.empty:
+            st.dataframe(
+                asset_district_df,
+                column_config={
+                    'District': st.column_config.TextColumn('District'),
+                    'Sector Code': st.column_config.TextColumn('Sector Code'),
+                    'Sector': st.column_config.TextColumn('Sector'),
+                    'Households': st.column_config.NumberColumn('Households', format='%d'),
+                    'Avg Assets/HH': st.column_config.NumberColumn('Avg Assets/HH', format='%.1f'),
+                    'Avg Livestock/HH': st.column_config.NumberColumn('Avg Livestock/HH', format='%.1f'),
+                    'Bank Account (%)': st.column_config.NumberColumn('Bank Account (%)', format='%.2f'),
+                    'Internet (%)': st.column_config.NumberColumn('Internet (%)', format='%.2f'),
+                    'Cash-Crop Land (%)': st.column_config.NumberColumn('Cash-Crop Land (%)', format='%.2f'),
+                    'Aquaculture (%)': st.column_config.NumberColumn('Aquaculture (%)', format='%.2f')
+                },
+                hide_index=True,
+                use_container_width=True
+            )
+
+            csv_asset = asset_district_df.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label='Download Assets & Wealth Analysis (CSV)',
+                data=csv_asset,
+                file_name=f'domain7_assets_wealth_{selected_site.lower()}.csv',
+                mime='text/csv'
+            )
+        else:
+            st.info("No district/sector asset data available for this site.")
+
+        # Key indicators explanation
+        st.markdown("---")
+        st.subheader("Key Indicators Captured")
+        st.markdown("""
+        **Durable Asset Score:** Total count of durable goods (vehicles, appliances, electronics, etc.) owned by the household.
+
+        **Livestock Wealth:** Total count of livestock owned (cows, goats, sheep, ducks, pigs, poultry/others). A simplified total; species-specific Tropical Livestock Unit (TLU) weights can be applied if the national weighting scheme is provided.
+
+        **Bank Account Ownership:** Percentage of households with at least one member holding a formal bank account.
+
+        **Cash-Crop Land Ownership:** Percentage of households owning agricultural land used for cash crops, with average land area in square metres.
+
+        **Aquaculture Ownership:** Percentage of households with aquaculture/fish-pond access, with average area in square metres.
+
+        **Internet Access & Data Spending:** Percentage of households with an internet connection and the distribution of weekly data expenditure.
+
+        **Wealth Quintiles:** Households ranked by the first principal component of durable asset counts (PCA). Q1 is the poorest 20%, Q5 the richest 20%.
+        """)
+
+    except Exception as e:
+        if any(col in str(e) for col in ['three_4_12', 'three_4_21', 'three_4_22', 'three_4_16', 'three_4_17', 'three_4_18', 'three_4_19', 'three_4_13', 'three_4_14']):
+            st.info("Asset / wealth columns (three_4_12, three_4_21, three_4_22, three_4_16/17/18/19, three_4_13/14) are not available in the current dataset. Domain 7 analysis is not possible.")
+        else:
+            st.error(f"Error running assets & wealth analysis: {e}")
 
     # ==================== TAB 1: Overview ====================
     with tab1:
