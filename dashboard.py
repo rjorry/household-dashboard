@@ -1073,9 +1073,13 @@ def main():
 
         # Structural type
         structural_map = {
+            '00': 'No Response',
             '01': 'Traditional (Bush materials)',
             '02': 'Semi-permanent house',
-            '03': 'Permanent house'
+            '03': 'Permanent house',
+            '04': 'Other',
+            '10': 'Other (10)',
+            '888': "Don't Know"
         }
         structural_counts = housing_df.loc[housing_df['three_4_1_norm'].ne(''), 'three_4_1_norm'].value_counts()
 
@@ -1083,10 +1087,13 @@ def main():
         has_dedicated_kitchen = (housing_df['three_4_9_norm'] == '01').sum()
         kitchen_pct = round(has_dedicated_kitchen * 100.0 / total_hh, 2) if total_hh > 0 else 0
         kitchen_type_map = {
+            '00': 'No Response',
             '01': 'Separate room',
             '02': 'Elsewhere in house',
             '03': 'Separate building',
-            '04': 'Outdoors'
+            '04': 'Outdoors',
+            '05': 'Other',
+            '888': "Don't Know"
         }
         kitchen_counts = housing_df.loc[
             (housing_df['three_4_9_norm'] == '01') & (housing_df['three_4_10_norm'].ne('')),
@@ -1253,6 +1260,352 @@ def main():
             st.info("Housing condition columns (three_4_1, three_4_4/5/6/7/9/10/15, total_hh_members) are not available in the current dataset. Domain 4 analysis is not possible.")
         else:
             st.error(f"Error running housing analysis: {e}")
+
+    st.markdown("---")
+    st.header(f"Domain 5: Water, Sanitation & Hygiene (WASH) – {selected_site.replace('_', ' ').title()}")
+
+    try:
+        # Discover actual household WASH column names from the database
+        wash_cols_df = pd.read_sql(
+            """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_name = 'households'
+            """,
+            engine
+        )
+        wash_cols = wash_cols_df['column_name'].tolist()
+
+        def find_col_wash(keywords):
+            for c in wash_cols:
+                c_lower = c.lower()
+                if all(k in c_lower for k in keywords):
+                    return c
+            return None
+
+        wthree_1_1 = find_col_wash(['three_1_1'])
+        wthree_1_4 = find_col_wash(['three_1_4'])
+        wthree_1_6 = find_col_wash(['three_1_6'])
+        wthree_1_7 = find_col_wash(['three_1_7'])
+        wthree_1_8 = find_col_wash(['three_1_8'])
+        wthree_1_9 = find_col_wash(['three_1_9'])
+        wthree_1_10 = find_col_wash(['three_1_10'])
+        wthree_2_2 = find_col_wash(['three_2_2'])
+        wthree_2_3 = find_col_wash(['three_2_3'])
+        wthree_2_4 = find_col_wash(['three_2_4'])
+
+        required = [
+            ('three_1_1', wthree_1_1),
+            ('three_1_9', wthree_1_9),
+            ('three_1_10', wthree_1_10)
+        ]
+        missing = [n for n, c in required if c is None]
+
+        if missing:
+            raise Exception(
+                f"Could not find one or more WASH columns. Missing: {', '.join(missing)}. "
+                f"Columns found: {', '.join(wash_cols[:30])}"
+            )
+
+        def sel_expr(col, alias):
+            return f'h."{col}" AS {alias}' if col else f'NULL AS {alias}'
+
+        # Load household-level WASH data using the discovered column names
+        wash_sql = f'''
+            SELECT 
+                h.key, h.pro_name, h.dist_name, h.sector,
+                {sel_expr(wthree_1_1, 'three_1_1')},
+                {sel_expr(wthree_1_4, 'three_1_4')},
+                {sel_expr(wthree_1_6, 'three_1_6')},
+                {sel_expr(wthree_1_7, 'three_1_7')},
+                {sel_expr(wthree_1_8, 'three_1_8')},
+                {sel_expr(wthree_1_9, 'three_1_9')},
+                {sel_expr(wthree_1_10, 'three_1_10')},
+                {sel_expr(wthree_2_2, 'three_2_2')},
+                {sel_expr(wthree_2_3, 'three_2_3')},
+                {sel_expr(wthree_2_4, 'three_2_4')}
+            FROM households h
+            WHERE h.pro_name = %s
+        '''
+        wash_df = pd.read_sql(wash_sql, engine, params=(selected_site,))
+
+        # Normalize categorical codes
+        for col in ['three_1_1', 'three_1_6', 'three_1_7', 'three_1_8', 'three_1_9', 'three_1_10',
+                    'three_2_2', 'three_2_3', 'three_2_4']:
+            wash_df[col] = (
+                wash_df[col]
+                .astype('string')
+                .fillna('')
+                .str.strip()
+                .str.replace(r'\.0$', '', regex=True)
+                .str.zfill(2)
+            )
+
+        # Convert numeric columns
+        wash_df['three_1_4'] = pd.to_numeric(wash_df['three_1_4'], errors='coerce')
+        wash_df.loc[wash_df['three_1_4'] >= 888, 'three_1_4'] = np.nan
+
+        total_hh = len(wash_df)
+
+        # Improved drinking water
+        improved_water_codes = {'01', '02', '03', '04', '05', '06', '08', '11', '12', '13'}
+        improved_water = wash_df['three_1_1'].isin(improved_water_codes)
+        improved_water_rate = round(improved_water.sum() * 100.0 / total_hh, 2) if total_hh > 0 else 0
+        surface_water = wash_df['three_1_1'] == '10'
+        surface_water_rate = round(surface_water.sum() * 100.0 / total_hh, 2) if total_hh > 0 else 0
+
+        # Improved sanitation (unshared)
+        improved_san_codes = {'01', '02', '03', '04', '05', '06', '07'}
+        improved_san_unshared = wash_df['three_1_9'].isin(improved_san_codes) & (wash_df['three_1_10'] == '02')
+        improved_san_rate = round(improved_san_unshared.sum() * 100.0 / total_hh, 2) if total_hh > 0 else 0
+        open_defecation = wash_df['three_1_9'].isin({'10', '11'})
+        open_defecation_rate = round(open_defecation.sum() * 100.0 / total_hh, 2) if total_hh > 0 else 0
+
+        # Basic handwashing
+        basic_handwashing = (wash_df['three_2_2'] == '01') & (wash_df['three_2_3'] == '01') & (wash_df['three_2_4'] == '01')
+        handwashing_rate = round(basic_handwashing.sum() * 100.0 / total_hh, 2) if total_hh > 0 else 0
+
+        # Water fetching time and burden
+        avg_fetch_time = wash_df['three_1_4'].mean()
+        female_collectors = wash_df['three_1_6'].isin({'01', '03'})
+        all_collectors = wash_df['three_1_6'].isin({'01', '02', '03', '04'})
+        female_burden = round(female_collectors.sum() * 100.0 / all_collectors.sum(), 2) if all_collectors.sum() > 0 else 0
+
+        # Water treatment
+        any_treatment = wash_df['three_1_7'] == '01'
+        treatment_rate = round(any_treatment.sum() * 100.0 / total_hh, 2) if total_hh > 0 else 0
+
+        # Site-wide metrics
+        st.subheader("Site-Wide WASH Summary")
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.metric("Improved Water Access", f"{improved_water_rate:.2f}%")
+            st.metric("Surface Water Reliance", f"{surface_water_rate:.2f}%")
+        with c2:
+            st.metric("Improved Sanitation (Unshared)", f"{improved_san_rate:.2f}%")
+            st.metric("Open Defecation Rate", f"{open_defecation_rate:.2f}%")
+        with c3:
+            st.metric("Basic Handwashing", f"{handwashing_rate:.2f}%")
+            st.metric("Water Treatment Rate", f"{treatment_rate:.2f}%")
+
+        st.metric("Avg. Water Fetching Time (min)", f"{avg_fetch_time:.1f}" if pd.notna(avg_fetch_time) else "n/a")
+        st.metric("Female/Girl Water Collection Burden", f"{female_burden:.2f}%" if all_collectors.sum() > 0 else "n/a")
+
+        # Visualizations
+        st.markdown("---")
+        st.subheader("Drinking Water & Sanitation")
+
+        water_source_map = {
+            '01': 'Piped into dwelling',
+            '02': 'Piped into yard/plot',
+            '03': 'Piped to public tap',
+            '04': 'Piped to neighbor',
+            '05': 'Tube well',
+            '06': 'Protected well',
+            '07': 'Unprotected well',
+            '08': 'Protected spring',
+            '09': 'Unprotected spring',
+            '10': 'Surface water',
+            '11': 'Rainwater tank',
+            '12': 'Tanker-truck',
+            '13': 'Bottled water'
+        }
+        water_counts = wash_df.loc[wash_df['three_1_1'].ne(''), 'three_1_1'].value_counts()
+        water_data = pd.DataFrame([
+            {'Source': water_source_map.get(k, f'Code {k}'), 'Count': int(v)}
+            for k, v in water_counts.items()
+        ])
+
+        sanitation_map = {
+            '01': 'Flush to sewer',
+            '02': 'Flush to septic',
+            '03': 'Flush to pit',
+            '04': 'Flush elsewhere',
+            '05': 'VIP latrine',
+            '06': 'Pit with slab',
+            '07': 'Composting toilet',
+            '08': 'Pit without slab',
+            '09': 'Overhung toilet',
+            '10': 'Open defecation',
+            '11': 'No facility'
+        }
+        san_counts = wash_df.loc[wash_df['three_1_9'].ne(''), 'three_1_9'].value_counts()
+        san_data = pd.DataFrame([
+            {'Facility': sanitation_map.get(k, f'Code {k}'), 'Count': int(v)}
+            for k, v in san_counts.items()
+        ])
+
+        col1, col2 = st.columns(2)
+        with col1:
+            if not water_data.empty:
+                fig_water = px.bar(
+                    water_data.sort_values('Count', ascending=True),
+                    y='Source',
+                    x='Count',
+                    orientation='h',
+                    title='Drinking Water Source',
+                    color_discrete_sequence=['#3b6e9b']
+                )
+                fig_water.update_layout(yaxis={'categoryorder': 'total ascending'})
+                st.plotly_chart(fig_water, use_container_width=True)
+            else:
+                st.info("No drinking water source data available.")
+
+        with col2:
+            if not san_data.empty:
+                fig_san = px.bar(
+                    san_data.sort_values('Count', ascending=True),
+                    y='Facility',
+                    x='Count',
+                    orientation='h',
+                    title='Sanitation Facility',
+                    color_discrete_sequence=['#3b6e9b']
+                )
+                fig_san.update_layout(yaxis={'categoryorder': 'total ascending'})
+                st.plotly_chart(fig_san, use_container_width=True)
+            else:
+                st.info("No sanitation facility data available.")
+
+        st.markdown("---")
+        st.subheader("Handwashing, Treatment & Water Collection")
+
+        treatment_map = {
+            '01': 'Boil',
+            '02': 'Bleach / Chlorine',
+            '03': 'Cloth filter',
+            '04': 'Ceramic / Sand filter',
+            '05': 'Solar'
+        }
+        treatment_counts = wash_df.loc[wash_df['three_1_8'].ne(''), 'three_1_8'].value_counts()
+        treatment_data = pd.DataFrame([
+            {'Method': treatment_map.get(k, f'Code {k}'), 'Count': int(v)}
+            for k, v in treatment_counts.items()
+        ])
+
+        collector_map = {
+            '01': 'Adult woman',
+            '02': 'Adult man',
+            '03': 'Female child',
+            '04': 'Male child'
+        }
+        collector_counts = wash_df.loc[wash_df['three_1_6'].ne(''), 'three_1_6'].value_counts()
+        collector_data = pd.DataFrame([
+            {'Collector': collector_map.get(k, f'Code {k}'), 'Count': int(v)}
+            for k, v in collector_counts.items()
+        ])
+
+        col1, col2 = st.columns(2)
+        with col1:
+            if not treatment_data.empty:
+                fig_treat = px.bar(
+                    treatment_data,
+                    x='Method',
+                    y='Count',
+                    title='Water Treatment Method',
+                    color_discrete_sequence=['#3b6e9b']
+                )
+                st.plotly_chart(fig_treat, use_container_width=True)
+            else:
+                st.info("No water treatment data available.")
+
+        with col2:
+            if not collector_data.empty:
+                fig_coll = px.bar(
+                    collector_data,
+                    x='Collector',
+                    y='Count',
+                    title='Primary Water Collector',
+                    color_discrete_sequence=['#3b6e9b']
+                )
+                st.plotly_chart(fig_coll, use_container_width=True)
+            else:
+                st.info("No water collector data available.")
+
+        # District and sector breakdown
+        st.markdown("---")
+        st.subheader("WASH by District & Sector")
+
+        wash_district_data = []
+        for (district, sector), group in wash_df.groupby(['dist_name', 'sector']):
+            total = len(group)
+            improved_w = group['three_1_1'].isin(improved_water_codes)
+            surface_w = group['three_1_1'] == '10'
+            improved_s = (group['three_1_9'].isin(improved_san_codes)) & (group['three_1_10'] == '02')
+            open_d = group['three_1_9'].isin({'10', '11'})
+            handw = (group['three_2_2'] == '01') & (group['three_2_3'] == '01') & (group['three_2_4'] == '01')
+            treated = group['three_1_7'] == '01'
+            avg_ft = group['three_1_4'].mean()
+
+            sector_map = {'01': 'Urban', '02': 'Peri-Urban', '03': 'Settlement', '04': 'Rural'}
+            wash_district_data.append({
+                'District': district,
+                'Sector Code': sector,
+                'Sector': sector_map.get(str(sector).zfill(2), 'Unclassified'),
+                'Households': total,
+                'Improved Water (%)': round(improved_w.sum() * 100.0 / total, 2) if total > 0 else 0,
+                'Surface Water (%)': round(surface_w.sum() * 100.0 / total, 2) if total > 0 else 0,
+                'Improved Sanitation (%)': round(improved_s.sum() * 100.0 / total, 2) if total > 0 else 0,
+                'Open Defecation (%)': round(open_d.sum() * 100.0 / total, 2) if total > 0 else 0,
+                'Basic Handwashing (%)': round(handw.sum() * 100.0 / total, 2) if total > 0 else 0,
+                'Water Treatment (%)': round(treated.sum() * 100.0 / total, 2) if total > 0 else 0,
+                'Avg Fetch Time (min)': round(avg_ft, 1) if pd.notna(avg_ft) else 0
+            })
+
+        wash_district_df = pd.DataFrame(wash_district_data)
+        if not wash_district_df.empty:
+            st.dataframe(
+                wash_district_df,
+                column_config={
+                    'District': st.column_config.TextColumn('District'),
+                    'Sector Code': st.column_config.TextColumn('Sector Code'),
+                    'Sector': st.column_config.TextColumn('Sector'),
+                    'Households': st.column_config.NumberColumn('Households', format='%d'),
+                    'Improved Water (%)': st.column_config.NumberColumn('Improved Water (%)', format='%.2f'),
+                    'Surface Water (%)': st.column_config.NumberColumn('Surface Water (%)', format='%.2f'),
+                    'Improved Sanitation (%)': st.column_config.NumberColumn('Improved Sanitation (%)', format='%.2f'),
+                    'Open Defecation (%)': st.column_config.NumberColumn('Open Defecation (%)', format='%.2f'),
+                    'Basic Handwashing (%)': st.column_config.NumberColumn('Basic Handwashing (%)', format='%.2f'),
+                    'Water Treatment (%)': st.column_config.NumberColumn('Water Treatment (%)', format='%.2f'),
+                    'Avg Fetch Time (min)': st.column_config.NumberColumn('Avg Fetch Time (min)', format='%.1f')
+                },
+                hide_index=True,
+                use_container_width=True
+            )
+
+            csv_wash = wash_district_df.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label='Download WASH Analysis (CSV)',
+                data=csv_wash,
+                file_name=f'domain5_wash_{selected_site.lower()}.csv',
+                mime='text/csv'
+            )
+        else:
+            st.info("No district/sector WASH data available for this site.")
+
+        # Key indicators explanation
+        st.markdown("---")
+        st.subheader("Key Indicators Captured")
+        st.markdown("""
+        **Improved Drinking Water Access:** Percentage of households using an improved drinking water source, including piped water, tube wells, protected wells, protected springs, rainwater, tanker-trucks, and bottled water.
+
+        **Surface Water Reliance:** Percentage of households depending on unprotected surface water such as rivers, streams, or lakes.
+
+        **Improved Sanitation (Unshared):** Percentage of households using an improved sanitation facility that is not shared with other households.
+
+        **Open Defecation Rate:** Percentage of households reporting open defecation or no sanitation facility.
+
+        **Basic Handwashing Facility:** Percentage of households with an observed handwashing station that has both water and soap/detergent available.
+
+        **Water Treatment Rate:** Percentage of households that treat their drinking water before consumption.
+
+        **Water Fetching Time & Gender Burden:** Average round-trip time (minutes) to collect water, and the share of households where water is collected by women or girls.
+        """)
+
+    except Exception as e:
+        if any(col in str(e) for col in ['three_1_1', 'three_1_4', 'three_1_6', 'three_1_7', 'three_1_8', 'three_1_9', 'three_1_10', 'three_2_2', 'three_2_3', 'three_2_4']):
+            st.info("WASH columns (three_1_1/4/6/7/8/9/10, three_2_2/3/4) are not available in the current dataset. Domain 5 analysis is not possible.")
+        else:
+            st.error(f"Error running WASH analysis: {e}")
 
     # ==================== TAB 1: Overview ====================
     with tab1:
