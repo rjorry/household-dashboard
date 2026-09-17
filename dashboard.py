@@ -2466,6 +2466,314 @@ def main():
         else:
             st.error(f"Error running income & welfare analysis: {e}")
 
+        st.markdown("---")
+    st.header(f"Domain 9: Food Security – {selected_site.replace('_', ' ').title()}")
+
+    try:
+        # Discover actual household food security column names from the database
+        fies_cols_df = pd.read_sql(
+            """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_name = 'households'
+            """,
+            engine
+        )
+        fies_col_list = fies_cols_df['column_name'].tolist()
+
+        def find_col_fies(base):
+            for c in fies_col_list:
+                if base in c:
+                    return c
+            return None
+
+        fies_items = {f'three_6_{i}': find_col_fies(f'three_6_{i}') for i in range(1, 9)}
+        fies_9 = find_col_fies('three_6_9')
+        fies_10 = find_col_fies('three_6_10')
+
+        if not any(c for c in fies_items.values() if c is not None):
+            raise Exception(
+                f"Could not find any FIES columns. Columns found: {', '.join(fies_col_list[:30])}"
+            )
+
+        fies_item_labels = {
+            'three_6_1': 'Worried about not having enough food',
+            'three_6_2': 'Unable to eat nutritious food',
+            'three_6_3': 'Ate only a few kinds of food',
+            'three_6_4': 'Skipped main meals',
+            'three_6_5': 'Ate less than they should',
+            'three_6_6': 'Ran out of food',
+            'three_6_7': 'Hungry but did not eat',
+            'three_6_8': 'Went whole day without food'
+        }
+
+        def sel_expr_fies(col, alias):
+            return f'h."{col}" AS {alias}' if col else f'NULL AS {alias}'
+
+        fies_select = ',\n                '.join(
+            [sel_expr_fies(v, k) for k, v in fies_items.items()] +
+            [sel_expr_fies(fies_9, 'three_6_9'), sel_expr_fies(fies_10, 'three_6_10')]
+        )
+
+        fies_sql = f'''
+            SELECT 
+                h.key, h.pro_name, h.dist_name, h.sector,
+                {fies_select}
+            FROM households h
+            WHERE h.pro_name = %s
+        '''
+        fies_df = pd.read_sql(fies_sql, engine, params=(selected_site,))
+
+        # Normalize FIES items to binary (01 = Yes, 02/888/blank/NaN = No)
+        for col in fies_items.keys():
+            fies_df[col] = (
+                fies_df[col]
+                .astype('string')
+                .fillna('')
+                .str.strip()
+                .str.replace(r'\.0$', '', regex=True)
+            )
+
+        # Calculate per-household FIES score and severity
+        fies_df['fies_score'] = (
+            fies_df[[c for c in fies_items.keys()]]
+            .apply(lambda x: (x == '01').sum(), axis=1)
+        )
+
+        def fies_tier(score):
+            if 0 <= score <= 2:
+                return 'Food Secure / Mild'
+            elif 3 <= score <= 5:
+                return 'Moderate'
+            else:
+                return 'Severe'
+
+        fies_df['fies_tier'] = fies_df['fies_score'].apply(fies_tier)
+
+        total_hh = len(fies_df)
+
+        # Site-wide metrics
+        mean_fies = round(fies_df['fies_score'].mean(), 2) if total_hh > 0 else None
+        mild_pct = round((fies_df['fies_tier'] == 'Food Secure / Mild').sum() * 100.0 / total_hh, 2) if total_hh > 0 else 0
+        moderate_pct = round((fies_df['fies_tier'] == 'Moderate').sum() * 100.0 / total_hh, 2) if total_hh > 0 else 0
+        severe_pct = round((fies_df['fies_tier'] == 'Severe').sum() * 100.0 / total_hh, 2) if total_hh > 0 else 0
+
+        st.subheader("Site-Wide Food Security Summary")
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            st.metric("Mean FIES Score", f"{mean_fies:.2f}" if pd.notna(mean_fies) else "n/a")
+        with c2:
+            st.metric("Food Secure / Mild", f"{mild_pct:.2f}%")
+        with c3:
+            st.metric("Moderate Insecurity", f"{moderate_pct:.2f}%")
+        with c4:
+            st.metric("Severe Insecurity", f"{severe_pct:.2f}%")
+
+        # Individual FIES item prevalence
+        fies_item_data = []
+        for col, label in fies_item_labels.items():
+            if col in fies_df.columns:
+                valid = fies_df[fies_df[col].ne('')]
+                denom = len(valid) if len(valid) > 0 else 1
+                pct = round((valid[col] == '01').sum() * 100.0 / denom, 2)
+                fies_item_data.append({'FIES Item': label, 'Prevalence (%)': pct})
+
+        fies_item_df = pd.DataFrame(fies_item_data)
+
+        # Visualizations
+        st.markdown("---")
+        st.subheader("FIES Prevalence, Drivers & Acquisition")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            if not fies_item_df.empty:
+                fig_fies_items = px.bar(
+                    fies_item_df,
+                    x='FIES Item',
+                    y='Prevalence (%)',
+                    title='FIES Item Prevalence (%)',
+                    color_discrete_sequence=['#3b6e9b']
+                )
+                fig_fies_items.update_xaxes(tickangle=45)
+                st.plotly_chart(fig_fies_items, use_container_width=True)
+            else:
+                st.info("No FIES item data available.")
+
+            # FIES severity distribution
+            severity_counts = fies_df['fies_tier'].value_counts().reindex(
+                ['Food Secure / Mild', 'Moderate', 'Severe'], fill_value=0
+            ).reset_index()
+            severity_counts.columns = ['Severity', 'Households']
+            if not severity_counts.empty:
+                fig_severity = px.bar(
+                    severity_counts,
+                    x='Severity',
+                    y='Households',
+                    title='FIES Severity Distribution',
+                    color_discrete_sequence=['#3b6e9b']
+                )
+                st.plotly_chart(fig_severity, use_container_width=True)
+            else:
+                st.info("No severity data available.")
+
+        with col2:
+            # Food shortage drivers
+            driver_map = {
+                '01': 'No money',
+                '02': 'No garden',
+                '03': 'Garden insufficient',
+                '04': 'Seasonal / climate damage',
+                '05': 'Weather / fishing constraints',
+                '06': 'Health / old age',
+                '07': 'Tribal unrest',
+                '08': 'Others'
+            }
+            if 'three_6_9' in fies_df.columns:
+                fies_df['three_6_9'] = (
+                    fies_df['three_6_9']
+                    .astype('string')
+                    .fillna('')
+                    .str.strip()
+                    .str.replace(r'\.0$', '', regex=True)
+                    .str.zfill(2)
+                )
+                driver_counts = fies_df.loc[fies_df['three_6_9'].ne(''), 'three_6_9'].value_counts()
+                driver_data = pd.DataFrame([
+                    {'Driver': driver_map.get(k, f'Code {k}'), 'Count': int(v)}
+                    for k, v in driver_counts.items()
+                ])
+                if not driver_data.empty:
+                    fig_driver = px.bar(
+                        driver_data,
+                        x='Driver',
+                        y='Count',
+                        title='Primary Drivers of Food Shortage',
+                        color_discrete_sequence=['#3b6e9b']
+                    )
+                    fig_driver.update_xaxes(tickangle=45)
+                    st.plotly_chart(fig_driver, use_container_width=True)
+                else:
+                    st.info("No driver data available.")
+            else:
+                st.info("Driver column (three_6_9) not found.")
+
+            # Food acquisition means
+            acq_map = {
+                '01': 'Purchasing',
+                '02': 'Cultivation',
+                '03': 'Equal purchase & cultivation',
+                '04': 'Mostly purchasing',
+                '05': 'Mostly cultivation'
+            }
+            if 'three_6_10' in fies_df.columns:
+                fies_df['three_6_10'] = (
+                    fies_df['three_6_10']
+                    .astype('string')
+                    .fillna('')
+                    .str.strip()
+                    .str.replace(r'\.0$', '', regex=True)
+                    .str.zfill(2)
+                )
+                acq_counts = fies_df.loc[fies_df['three_6_10'].ne(''), 'three_6_10'].value_counts()
+                acq_data = pd.DataFrame([
+                    {'Means of Acquisition': acq_map.get(k, f'Code {k}'), 'Count': int(v)}
+                    for k, v in acq_counts.items()
+                ])
+                if not acq_data.empty:
+                    fig_acq = px.bar(
+                        acq_data,
+                        x='Means of Acquisition',
+                        y='Count',
+                        title='Main Means of Food Acquisition',
+                        color_discrete_sequence=['#3b6e9b']
+                    )
+                    fig_acq.update_xaxes(tickangle=45)
+                    st.plotly_chart(fig_acq, use_container_width=True)
+                else:
+                    st.info("No acquisition data available.")
+            else:
+                st.info("Acquisition column (three_6_10) not found.")
+
+        # District and sector breakdown
+        st.markdown("---")
+        st.subheader("Food Security by District & Sector")
+
+        fies_district_data = []
+        for (district, sector), group in fies_df.groupby(['dist_name', 'sector']):
+            total = len(group)
+            mean_score = round(group['fies_score'].mean(), 2) if total > 0 else 0
+            mild = round((group['fies_tier'] == 'Food Secure / Mild').sum() * 100.0 / total, 2) if total > 0 else 0
+            moderate = round((group['fies_tier'] == 'Moderate').sum() * 100.0 / total, 2) if total > 0 else 0
+            severe = round((group['fies_tier'] == 'Severe').sum() * 100.0 / total, 2) if total > 0 else 0
+
+            sector_map = {'01': 'Urban', '02': 'Peri-Urban', '03': 'Settlement', '04': 'Rural'}
+
+            fies_district_data.append({
+                'District': district,
+                'Sector Code': sector,
+                'Sector': sector_map.get(str(sector).zfill(2), 'Unclassified'),
+                'Households': total,
+                'Mean FIES Score': mean_score,
+                'Food Secure / Mild (%)': mild,
+                'Moderate Insecurity (%)': moderate,
+                'Severe Insecurity (%)': severe,
+                'No Money Driver (%)': round((group['three_6_9'] == '01').sum() * 100.0 / total, 2) if total > 0 and 'three_6_9' in group.columns else 0,
+                'Cultivation as Main (%)': round((group['three_6_10'] == '02').sum() * 100.0 / total, 2) if total > 0 and 'three_6_10' in group.columns else 0
+            })
+
+        fies_district_df = pd.DataFrame(fies_district_data)
+        if not fies_district_df.empty:
+            st.dataframe(
+                fies_district_df,
+                column_config={
+                    'District': st.column_config.TextColumn('District'),
+                    'Sector Code': st.column_config.TextColumn('Sector Code'),
+                    'Sector': st.column_config.TextColumn('Sector'),
+                    'Households': st.column_config.NumberColumn('Households', format='%d'),
+                    'Mean FIES Score': st.column_config.NumberColumn('Mean FIES Score', format='%.2f'),
+                    'Food Secure / Mild (%)': st.column_config.NumberColumn('Food Secure / Mild (%)', format='%.2f'),
+                    'Moderate Insecurity (%)': st.column_config.NumberColumn('Moderate Insecurity (%)', format='%.2f'),
+                    'Severe Insecurity (%)': st.column_config.NumberColumn('Severe Insecurity (%)', format='%.2f'),
+                    'No Money Driver (%)': st.column_config.NumberColumn('No Money Driver (%)', format='%.2f'),
+                    'Cultivation as Main (%)': st.column_config.NumberColumn('Cultivation as Main (%)', format='%.2f')
+                },
+                hide_index=True,
+                use_container_width=True
+            )
+
+            csv_fies = fies_district_df.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label='Download Food Security Analysis (CSV)',
+                data=csv_fies,
+                file_name=f'domain9_food_security_{selected_site.lower()}.csv',
+                mime='text/csv'
+            )
+        else:
+            st.info("No district/sector food security data available for this site.")
+
+        # Key indicators explanation
+        st.markdown("---")
+        st.subheader("Key Indicators Captured")
+        st.markdown("""
+        **FIES Score:** Cumulative Food Insecurity Experience Scale (0–8) from the eight standard FAO items, counting a response as yes (`01`) only.
+
+        **FIES Severity Tiers:** Food Secure / Mild (0–2), Moderate (3–5), and Severe (6–8).
+
+        **Severe Food Insecurity Prevalence:** Percentage of households with a FIES score of 6 or more, indicating extreme hunger experience.
+
+        **FIES Item Prevalence:** Percentage of households reporting each individual food-insecurity experience item.
+
+        **Primary Drivers of Food Shortage:** Main factors reported for household food insufficiency over the past 12 months.
+
+        **Main Means of Food Acquisition:** Primary strategy households use to obtain food, ranging from market purchase to subsistence cultivation.
+        """)
+
+    except Exception as e:
+        if any(col in str(e) for col in [f'three_6_{i}' for i in range(1, 11)]):
+            st.info("Food security columns (three_6_1 to three_6_10) are not available in the current dataset. Domain 9 analysis is not possible.")
+        else:
+            st.error(f"Error running food security analysis: {e}")
+
     # ==================== TAB 1: Overview ====================
     with tab1:
         st.header(f"Overview – {selected_site.replace('_', ' ').title()}")
