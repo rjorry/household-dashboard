@@ -1396,6 +1396,7 @@ def main():
         st.subheader("Drinking Water & Sanitation")
 
         water_source_map = {
+            '00': 'No Response',
             '01': 'Piped into dwelling',
             '02': 'Piped into yard/plot',
             '03': 'Piped to public tap',
@@ -1408,7 +1409,8 @@ def main():
             '10': 'Surface water',
             '11': 'Rainwater tank',
             '12': 'Tanker-truck',
-            '13': 'Bottled water'
+            '13': 'Bottled water',
+            '15': 'Others'
         }
         water_counts = wash_df.loc[wash_df['three_1_1'].ne(''), 'three_1_1'].value_counts()
         water_data = pd.DataFrame([
@@ -1417,17 +1419,19 @@ def main():
         ])
 
         sanitation_map = {
+            '00': 'No Response',
             '01': 'Flush to sewer',
             '02': 'Flush to septic',
             '03': 'Flush to pit',
             '04': 'Flush elsewhere',
-            '05': 'VIP latrine',
+            '05': 'VIP (Ventilated Improved Pit) latrine',
             '06': 'Pit with slab',
             '07': 'Composting toilet',
             '08': 'Pit without slab',
             '09': 'Overhung toilet',
             '10': 'Open defecation',
-            '11': 'No facility'
+            '11': 'No facility',
+            '12': 'Others'
         }
         san_counts = wash_df.loc[wash_df['three_1_9'].ne(''), 'three_1_9'].value_counts()
         san_data = pd.DataFrame([
@@ -1470,6 +1474,7 @@ def main():
         st.subheader("Handwashing, Treatment & Water Collection")
 
         treatment_map = {
+            '00': 'No Response',
             '01': 'Boil',
             '02': 'Bleach / Chlorine',
             '03': 'Cloth filter',
@@ -1483,10 +1488,12 @@ def main():
         ])
 
         collector_map = {
+            '00': 'No Response',
             '01': 'Adult woman',
             '02': 'Adult man',
             '03': 'Female child',
-            '04': 'Male child'
+            '04': 'Male child',
+            '05': 'Not Relevant'
         }
         collector_counts = wash_df.loc[wash_df['three_1_6'].ne(''), 'three_1_6'].value_counts()
         collector_data = pd.DataFrame([
@@ -1606,6 +1613,243 @@ def main():
             st.info("WASH columns (three_1_1/4/6/7/8/9/10, three_2_2/3/4) are not available in the current dataset. Domain 5 analysis is not possible.")
         else:
             st.error(f"Error running WASH analysis: {e}")
+
+    st.markdown("---")
+    st.header(f"Domain 6: Energy Access – {selected_site.replace('_', ' ').title()}")
+
+    try:
+        # Discover actual household energy column names from the database
+        energy_cols_df = pd.read_sql(
+            """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_name = 'households'
+            """,
+            engine
+        )
+        energy_cols = energy_cols_df['column_name'].tolist()
+
+        def find_col_energy(keywords):
+            for c in energy_cols:
+                c_lower = c.lower()
+                if all(k in c_lower for k in keywords):
+                    return c
+            return None
+
+        ethree_4_8 = find_col_energy(['three_4_8'])
+        ethree_4_11 = find_col_energy(['three_4_11'])
+
+        required = [
+            ('three_4_8', ethree_4_8),
+            ('three_4_11', ethree_4_11)
+        ]
+        missing = [n for n, c in required if c is None]
+
+        if missing:
+            raise Exception(
+                f"Could not find one or more energy columns. Missing: {', '.join(missing)}. "
+                f"Columns found: {', '.join(energy_cols[:30])}"
+            )
+
+        def sel_expr_energy(col, alias):
+            return f'h."{col}" AS {alias}' if col else f'NULL AS {alias}'
+
+        # Load household-level energy data using the discovered column names
+        energy_sql = f'''
+            SELECT 
+                h.key, h.pro_name, h.dist_name, h.sector,
+                {sel_expr_energy(ethree_4_8, 'three_4_8')},
+                {sel_expr_energy(ethree_4_11, 'three_4_11')}
+            FROM households h
+            WHERE h.pro_name = %s
+        '''
+        energy_df = pd.read_sql(energy_sql, engine, params=(selected_site,))
+
+        # Normalize categorical codes
+        for col in ['three_4_8', 'three_4_11']:
+            energy_df[col] = (
+                energy_df[col]
+                .astype('string')
+                .fillna('')
+                .str.strip()
+                .str.replace(r'\.0$', '', regex=True)
+                .str.zfill(2)
+            )
+
+        total_hh = len(energy_df)
+
+        # Energy indicators
+        any_electricity = energy_df['three_4_11'].isin({'01', '02', '03'})
+        total_elec_rate = round(any_electricity.sum() * 100.0 / total_hh, 2) if total_hh > 0 else 0
+        grid_rate = round((energy_df['three_4_11'] == '01').sum() * 100.0 / total_hh, 2) if total_hh > 0 else 0
+        solar_rate = round((energy_df['three_4_11'] == '03').sum() * 100.0 / total_hh, 2) if total_hh > 0 else 0
+        hazardous_lighting = energy_df['three_4_11'].isin({'05', '06'})
+        hazardous_rate = round(hazardous_lighting.sum() * 100.0 / total_hh, 2) if total_hh > 0 else 0
+
+        clean_cooking = energy_df['three_4_8'].isin({'01', '02', '03'})
+        clean_cooking_rate = round(clean_cooking.sum() * 100.0 / total_hh, 2) if total_hh > 0 else 0
+        biomass = energy_df['three_4_8'].isin({'05', '06'})
+        biomass_rate = round(biomass.sum() * 100.0 / total_hh, 2) if total_hh > 0 else 0
+
+        # Site-wide metrics
+        st.subheader("Site-Wide Energy Access Summary")
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.metric("Total Electricity Access", f"{total_elec_rate:.2f}%")
+            st.metric("PNG Power Grid", f"{grid_rate:.2f}%")
+        with c2:
+            st.metric("Off-Grid Solar", f"{solar_rate:.2f}%")
+            st.metric("Hazardous Lighting", f"{hazardous_rate:.2f}%")
+        with c3:
+            st.metric("Clean Cooking Fuel", f"{clean_cooking_rate:.2f}%")
+            st.metric("Biomass / Solid Fuel", f"{biomass_rate:.2f}%")
+
+        # Visualizations
+        st.markdown("---")
+        st.subheader("Energy Sources")
+
+        lighting_map = {
+            '00': 'No Response',
+            '01': 'PNG Power grid',
+            '02': 'Generator',
+            '03': 'Solar power',
+            '04': 'Candle',
+            '05': 'Kerosene lamp',
+            '06': 'Open fire'
+        }
+        lighting_counts = energy_df.loc[energy_df['three_4_11'].ne(''), 'three_4_11'].value_counts()
+        lighting_data = pd.DataFrame([
+            {'Lighting Source': lighting_map.get(k, f'Code {k}'), 'Count': int(v)}
+            for k, v in lighting_counts.items()
+        ])
+
+        cooking_map = {
+            '00': 'No Response',
+            '01': 'Electricity',
+            '02': 'Gas (LPG)',
+            '03': 'Natural gas',
+            '04': 'Kerosene',
+            '05': 'Charcoal',
+            '06': 'Wood / Biomass',
+            '07': 'Other'
+        }
+        cooking_counts = energy_df.loc[energy_df['three_4_8'].ne(''), 'three_4_8'].value_counts()
+        cooking_data = pd.DataFrame([
+            {'Cooking Fuel': cooking_map.get(k, f'Code {k}'), 'Count': int(v)}
+            for k, v in cooking_counts.items()
+        ])
+
+        col1, col2 = st.columns(2)
+        with col1:
+            if not lighting_data.empty:
+                fig_lighting = px.bar(
+                    lighting_data.sort_values('Count', ascending=True),
+                    y='Lighting Source',
+                    x='Count',
+                    orientation='h',
+                    title='Main Lighting Source',
+                    color_discrete_sequence=['#3b6e9b']
+                )
+                fig_lighting.update_layout(yaxis={'categoryorder': 'total ascending'})
+                st.plotly_chart(fig_lighting, use_container_width=True)
+            else:
+                st.info("No lighting source data available.")
+
+        with col2:
+            if not cooking_data.empty:
+                fig_cooking = px.bar(
+                    cooking_data.sort_values('Count', ascending=True),
+                    y='Cooking Fuel',
+                    x='Count',
+                    orientation='h',
+                    title='Main Cooking Fuel',
+                    color_discrete_sequence=['#3b6e9b']
+                )
+                fig_cooking.update_layout(yaxis={'categoryorder': 'total ascending'})
+                st.plotly_chart(fig_cooking, use_container_width=True)
+            else:
+                st.info("No cooking fuel data available.")
+
+        # District and sector breakdown
+        st.markdown("---")
+        st.subheader("Energy Access by District & Sector")
+
+        energy_district_data = []
+        for (district, sector), group in energy_df.groupby(['dist_name', 'sector']):
+            total = len(group)
+            any_elec = group['three_4_11'].isin({'01', '02', '03'})
+            grid = group['three_4_11'] == '01'
+            solar = group['three_4_11'] == '03'
+            hazard = group['three_4_11'].isin({'05', '06'})
+            clean_cook = group['three_4_8'].isin({'01', '02', '03'})
+            biomass_reliance = group['three_4_8'].isin({'05', '06'})
+
+            sector_map = {'01': 'Urban', '02': 'Peri-Urban', '03': 'Settlement', '04': 'Rural'}
+            energy_district_data.append({
+                'District': district,
+                'Sector Code': sector,
+                'Sector': sector_map.get(str(sector).zfill(2), 'Unclassified'),
+                'Households': total,
+                'Total Electricity (%)': round(any_elec.sum() * 100.0 / total, 2) if total > 0 else 0,
+                'PNG Grid (%)': round(grid.sum() * 100.0 / total, 2) if total > 0 else 0,
+                'Solar (%)': round(solar.sum() * 100.0 / total, 2) if total > 0 else 0,
+                'Hazardous Lighting (%)': round(hazard.sum() * 100.0 / total, 2) if total > 0 else 0,
+                'Clean Cooking (%)': round(clean_cook.sum() * 100.0 / total, 2) if total > 0 else 0,
+                'Biomass/Solid Fuel (%)': round(biomass_reliance.sum() * 100.0 / total, 2) if total > 0 else 0
+            })
+
+        energy_district_df = pd.DataFrame(energy_district_data)
+        if not energy_district_df.empty:
+            st.dataframe(
+                energy_district_df,
+                column_config={
+                    'District': st.column_config.TextColumn('District'),
+                    'Sector Code': st.column_config.TextColumn('Sector Code'),
+                    'Sector': st.column_config.TextColumn('Sector'),
+                    'Households': st.column_config.NumberColumn('Households', format='%d'),
+                    'Total Electricity (%)': st.column_config.NumberColumn('Total Electricity (%)', format='%.2f'),
+                    'PNG Grid (%)': st.column_config.NumberColumn('PNG Grid (%)', format='%.2f'),
+                    'Solar (%)': st.column_config.NumberColumn('Solar (%)', format='%.2f'),
+                    'Hazardous Lighting (%)': st.column_config.NumberColumn('Hazardous Lighting (%)', format='%.2f'),
+                    'Clean Cooking (%)': st.column_config.NumberColumn('Clean Cooking (%)', format='%.2f'),
+                    'Biomass/Solid Fuel (%)': st.column_config.NumberColumn('Biomass/Solid Fuel (%)', format='%.2f')
+                },
+                hide_index=True,
+                use_container_width=True
+            )
+
+            csv_energy = energy_district_df.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label='Download Energy Analysis (CSV)',
+                data=csv_energy,
+                file_name=f'domain6_energy_{selected_site.lower()}.csv',
+                mime='text/csv'
+            )
+        else:
+            st.info("No district/sector energy data available for this site.")
+
+        # Key indicators explanation
+        st.markdown("---")
+        st.subheader("Key Indicators Captured")
+        st.markdown("""
+        **Total Electricity Access:** Percentage of households with any electricity source (PNG Power grid, generator, or solar).
+
+        **PNG Power Grid Access:** Percentage of households connected to the main PNG Power grid.
+
+        **Off-Grid Solar Penetration:** Percentage of households using solar power systems for lighting.
+
+        **Hazardous Lighting Prevalence:** Percentage of households using kerosene lamps or open fires for lighting, flagged for fire and indoor air pollution risk.
+
+        **Clean Cooking Fuel Adoption:** Percentage of households using electricity, LPG, or natural gas for cooking.
+
+        **Biomass/Solid Fuel Reliance:** Percentage of households depending on charcoal or wood/biomass for cooking, a key driver of indoor air pollution.
+        """)
+
+    except Exception as e:
+        if any(col in str(e) for col in ['three_4_8', 'three_4_11']):
+            st.info("Energy columns (three_4_8, three_4_11) are not available in the current dataset. Domain 6 analysis is not possible.")
+        else:
+            st.error(f"Error running energy analysis: {e}")
 
     # ==================== TAB 1: Overview ====================
     with tab1:
