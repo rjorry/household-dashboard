@@ -2826,15 +2826,39 @@ def main():
             ward_counts = site_hh_df['ward_name'].value_counts().reset_index()
             ward_counts.columns = ['Ward', 'Households']
 
-            fig_ward = px.bar(ward_counts, x='Ward', y='Households', color='Ward',
-                              title="Households Collected per Ward")
+            # Population per ward (individuals joined to households)
+            hh_keys = site_hh_df[['key', 'ward_name']].copy()
+            hh_keys['key'] = hh_keys['key'].astype(str)
+            site_ind = ind_df.copy()
+            site_ind['parent_key'] = site_ind['parent_key'].astype(str)
+            site_ind = site_ind[site_ind['parent_key'].isin(hh_keys['key'])]
+            ward_pop = (
+                site_ind.merge(hh_keys, left_on='parent_key', right_on='key')
+                .groupby('ward_name')
+                .size()
+                .reset_index(name='Population')
+            )
+            ward_pop.columns = ['Ward', 'Population']
+
+            ward_counts = ward_counts.merge(ward_pop, on='Ward', how='left')
+            ward_counts['Population'] = ward_counts['Population'].fillna(0).astype(int)
+            ward_counts = ward_counts.sort_values('Households', ascending=False)
+
+            fig_ward = px.bar(
+                ward_counts,
+                x='Ward',
+                y=['Households', 'Population'],
+                barmode='group',
+                title="Households & Population per Ward"
+            )
             st.plotly_chart(fig_ward, use_container_width=True)
 
             st.dataframe(
-                ward_counts.sort_values('Households', ascending=False),
+                ward_counts,
                 column_config={
                     'Ward': st.column_config.TextColumn("Ward"),
-                    'Households': st.column_config.NumberColumn("Households", format='%d')
+                    'Households': st.column_config.NumberColumn("Households", format='%d'),
+                    'Population': st.column_config.NumberColumn("Population", format='%d')
                 },
                 hide_index=True,
                 use_container_width=True
