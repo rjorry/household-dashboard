@@ -3028,6 +3028,249 @@ def main():
             else:
                 st.error(f"Error running health access & mortality analysis: {e}")
 
+            # ==================== DOMAIN 11: RESIDENCY & INTERNAL MIGRATION ====================
+        st.markdown("---")
+        st.header(f"Domain 11: Residency & Internal Migration – {selected_site.replace('_', ' ').title()}")
+
+        try:
+            # Discover migration columns in the individuals table
+            mig_cols_df = pd.read_sql(
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name = 'individuals'
+                """,
+                engine
+            )
+            ind_col_list_m = mig_cols_df['column_name'].tolist()
+
+            def find_col_mig(base):
+                for c in ind_col_list_m:
+                    if base in c:
+                        return c
+                return None
+
+            mig_origin_col = find_col_mig('place_of_origin')
+            mig_reason_col = find_col_mig('reason_reside')
+            mig_duration_col = find_col_mig('duration_reside')
+            mig_bpro_col = find_col_mig('birth_pro_name')
+            mig_bdist_col = find_col_mig('birth_dist_name')
+
+            if mig_origin_col is None:
+                raise Exception("Migration column (place_of_origin) not found in individuals table.")
+
+            def sel_expr_mig(col, alias):
+                return f'i."{col}" AS {alias}' if col else f'NULL AS {alias}'
+
+            mig_select = ',\n                    '.join([
+                sel_expr_mig(mig_origin_col, 'place_of_origin'),
+                sel_expr_mig(mig_reason_col, 'reason_reside_there'),
+                sel_expr_mig(mig_duration_col, 'duration_reside'),
+                sel_expr_mig(mig_bpro_col, 'birth_pro_name'),
+                sel_expr_mig(mig_bdist_col, 'birth_dist_name')
+            ])
+
+            mig_sql = f'''
+                SELECT i.parent_key, {mig_select}
+                FROM individuals i
+                WHERE i.parent_key IN (SELECT key FROM households WHERE pro_name = %s)
+            '''
+            mig_df = pd.read_sql(mig_sql, engine, params=(selected_site,))
+
+            # Attach household geography (current residence)
+            hh_geo_m = pd.read_sql(
+                "SELECT key, pro_name, dist_name, sector FROM households WHERE pro_name = %s",
+                engine, params=(selected_site,)
+            )
+            mig_df = mig_df.merge(hh_geo_m, left_on='parent_key', right_on='key', how='left')
+
+            # Normalize coded variables to two-digit strings
+            for col in ['place_of_origin', 'reason_reside_there', 'duration_reside']:
+                mig_df[col + '_norm'] = (
+                    mig_df[col]
+                    .astype('string')
+                    .fillna('')
+                    .str.strip()
+                    .str.replace(r'\.0$', '', regex=True)
+                    .str.zfill(2)
+                )
+
+            # Normalize province/district names for origin-destination comparison
+            def norm_place(s):
+                return (
+                    s.astype('string').fillna('').str.strip().str.lower()
+                    .str.replace('_', ' ').str.replace(' province', '', regex=False)
+                )
+
+            mig_df['birth_pro_norm'] = norm_place(mig_df['birth_pro_name'])
+            mig_df['cur_pro_norm'] = norm_place(mig_df['pro_name'])
+            mig_df['birth_dist_norm'] = norm_place(mig_df['birth_dist_name'])
+            mig_df['cur_dist_norm'] = norm_place(mig_df['dist_name'])
+
+            mig_df['is_migrant'] = mig_df['place_of_origin_norm'] == '02'
+            mig_df['is_inter_prov'] = mig_df['birth_pro_norm'].ne('') & (mig_df['birth_pro_norm'] != mig_df['cur_pro_norm'])
+            mig_df['is_inter_dist'] = mig_df['birth_dist_norm'].ne('') & (mig_df['birth_dist_norm'] != mig_df['cur_dist_norm'])
+
+            # Site-wide metrics
+            total_pop_m = len(mig_df)
+            migrants = int(mig_df['is_migrant'].sum())
+            mig_prev = round(migrants * 100.0 / total_pop_m, 2) if total_pop_m > 0 else 0
+            inter_prov_n = int(mig_df['is_inter_prov'].sum())
+            inter_prov_pct = round(inter_prov_n * 100.0 / total_pop_m, 2) if total_pop_m > 0 else 0
+            inter_dist_n = int(mig_df['is_inter_dist'].sum())
+            inter_dist_pct = round(inter_dist_n * 100.0 / total_pop_m, 2) if total_pop_m > 0 else 0
+
+            migrants_df = mig_df[mig_df['is_migrant']].copy()
+            n_mig = len(migrants_df)
+            permanent_n = int(migrants_df['duration_reside_norm'].isin(['01', '07']).sum())
+            short_term_n = int(migrants_df['duration_reside_norm'].isin(['03', '04']).sum())
+            permanent_pct = round(permanent_n * 100.0 / n_mig, 2) if n_mig > 0 else 0
+            short_term_pct = round(short_term_n * 100.0 / n_mig, 2) if n_mig > 0 else 0
+
+            st.subheader("Site-Wide Residency & Migration Summary")
+            c1, c2, c3, c4 = st.columns(4)
+            with c1:
+                st.metric("Total Population", f"{total_pop_m:,}")
+            with c2:
+                st.metric("Migrants (Outside Origin)", f"{migrants:,}")
+            with c3:
+                st.metric("Migrant Prevalence", f"{mig_prev}%")
+            with c4:
+                st.metric("Inter-Provincial Migrants", f"{inter_prov_pct}%")
+
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                st.metric("Inter-District Migrants", f"{inter_dist_pct}%")
+            with c2:
+                st.metric("Permanent Settlers (of Migrants)", f"{permanent_pct}%")
+            with c3:
+                st.metric("Short-Term / Circular (of Migrants)", f"{short_term_pct}%")
+
+            # Visualizations
+            st.markdown("---")
+            st.subheader("Migration Status & Drivers")
+            v1, v2 = st.columns(2)
+            with v1:
+                origin_status = mig_df['place_of_origin_norm'].map({'01': 'Native Resident', '02': 'Migrant'}).fillna('No Response')
+                origin_counts = origin_status.value_counts().reset_index()
+                origin_counts.columns = ['Residency Status', 'Individuals']
+                fig_origin = px.pie(
+                    origin_counts, values='Individuals', names='Residency Status', hole=0.4,
+                    title='Place of Origin Status'
+                )
+                st.plotly_chart(fig_origin, use_container_width=True)
+            with v2:
+                reason_map = {
+                    '01': 'Work Purpose', '02': 'Education', '03': 'Marriage',
+                    '04': 'Divorced / Separated', '05': 'Death of Spouse',
+                    '06': 'Moving with Parents', '07': 'Moving with Spouse', '08': 'Other'
+                }
+                reason_counts = (
+                    migrants_df['reason_reside_there_norm'].map(reason_map).fillna('No Response')
+                    .value_counts().reset_index()
+                )
+                reason_counts.columns = ['Reason', 'Migrants']
+                fig_reason = px.bar(
+                    reason_counts, x='Reason', y='Migrants',
+                    title='Primary Driver of Relocation (Migrants)'
+                )
+                st.plotly_chart(fig_reason, use_container_width=True)
+
+            v1, v2 = st.columns(2)
+            with v1:
+                duration_map = {
+                    '01': 'Permanently', '02': 'Indefinite Period', '03': '3–6 Months',
+                    '04': '6 Months–1 Year', '05': '1–2 Years', '06': '3–5 Years',
+                    '07': 'More than 5 Years'
+                }
+                duration_counts = (
+                    migrants_df['duration_reside_norm'].map(duration_map).fillna('No Response')
+                    .value_counts().reset_index()
+                )
+                duration_counts.columns = ['Expected Duration', 'Migrants']
+                fig_duration = px.bar(
+                    duration_counts, x='Expected Duration', y='Migrants',
+                    title='Expected Duration of Stay (Migrants)'
+                )
+                st.plotly_chart(fig_duration, use_container_width=True)
+            with v2:
+                prov_origin = mig_df.loc[mig_df['is_inter_prov'], 'birth_pro_name'].astype('string').fillna('').str.strip()
+                prov_origin = prov_origin[prov_origin.ne('')]
+                if not prov_origin.empty:
+                    prov_counts = prov_origin.value_counts().head(15).reset_index()
+                    prov_counts.columns = ['Province of Birth', 'Migrants']
+                    fig_prov = px.bar(
+                        prov_counts, x='Province of Birth', y='Migrants',
+                        title='Inter-Provincial Migrant Origins (Top 15)'
+                    )
+                    st.plotly_chart(fig_prov, use_container_width=True)
+
+            # District and sector breakdown
+            st.markdown("---")
+            st.subheader("Residency & Migration by District & Sector")
+
+            sector_map_d11 = {'01': 'Urban', '02': 'Peri-Urban', '03': 'Settlement', '04': 'Rural'}
+            mig_district_data = []
+            for (district, sector), group in mig_df.groupby(['dist_name', 'sector']):
+                total = len(group)
+                g_mig = int(group['is_migrant'].sum())
+                g_prov = int(group['is_inter_prov'].sum())
+                g_dist = int(group['is_inter_dist'].sum())
+                g_migrants = group[group['is_migrant']]
+                g_nmig = len(g_migrants)
+                g_work = int((g_migrants['reason_reside_there_norm'] == '01').sum())
+                g_perm = int(g_migrants['duration_reside_norm'].isin(['01', '07']).sum())
+                g_short = int(g_migrants['duration_reside_norm'].isin(['03', '04']).sum())
+
+                mig_district_data.append({
+                    'District': district,
+                    'Sector Code': sector,
+                    'Sector': sector_map_d11.get(str(sector).zfill(2), 'Unclassified'),
+                    'Population': total,
+                    'Migrants': g_mig,
+                    'Migrant Prevalence (%)': round(g_mig * 100.0 / total, 2) if total > 0 else 0,
+                    'Inter-Provincial (%)': round(g_prov * 100.0 / total, 2) if total > 0 else 0,
+                    'Inter-District (%)': round(g_dist * 100.0 / total, 2) if total > 0 else 0,
+                    'Work Driver (% of Migrants)': round(g_work * 100.0 / g_nmig, 2) if g_nmig > 0 else 0,
+                    'Permanent (% of Migrants)': round(g_perm * 100.0 / g_nmig, 2) if g_nmig > 0 else 0,
+                    'Short-Term (% of Migrants)': round(g_short * 100.0 / g_nmig, 2) if g_nmig > 0 else 0
+                })
+
+            mig_district_df = pd.DataFrame(mig_district_data)
+            if not mig_district_df.empty:
+                st.dataframe(mig_district_df, hide_index=True, use_container_width=True)
+
+                csv_mig = mig_district_df.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label='Download Residency & Migration Analysis (CSV)',
+                    data=csv_mig,
+                    file_name=f'domain11_migration_{selected_site.lower()}.csv',
+                    mime='text/csv'
+                )
+            else:
+                st.info("No district/sector migration data available for this site.")
+
+            # Key indicators explanation
+            st.markdown("---")
+            st.subheader("Key Indicators Captured")
+            st.markdown("""
+            **Internal Migration Prevalence:** Percentage of individuals living outside their place of origin (`place_of_origin` = No) — the total migrant stock.
+
+            **Primary Driver of Relocation:** Distribution of reasons for residing at the current site among migrants (`reason_reside_there`): work, education, marriage, family relocation, and other drivers.
+
+            **Expected Duration of Stay:** Permanence tiers among migrants (`duration_reside`) — permanent settlers (Permanently / >5 years) vs. short-term circular migrants (3–6 months / 6 months–1 year).
+
+            **Inter-Provincial Migration Stream:** Lifetime migrants whose province of birth differs from the current surveillance province.
+
+            **Inter-District Migration Stream:** Sub-national mobility where district of birth differs from the current surveillance district.
+            """)
+
+        except Exception as e:
+            if 'place_of_origin' in str(e) or 'reside' in str(e) or 'birth_' in str(e):
+                st.info("Migration columns (place_of_origin, reason_reside_there, duration_reside, birth_pro_name, birth_dist_name) are not available in the current dataset. Domain 11 analysis is not possible.")
+            else:
+                st.error(f"Error running residency & migration analysis: {e}")
+
     # ==================== TAB 1: Overview ====================
     with tab1:
         st.header(f"Overview – {selected_site.replace('_', ' ').title()}")
