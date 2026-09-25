@@ -3271,6 +3271,262 @@ def main():
             else:
                 st.error(f"Error running residency & migration analysis: {e}")
 
+            # ==================== DOMAIN 12: SPATIAL & GEOGRAPHIC HOTSPOT ANALYSIS ====================
+        st.markdown("---")
+        st.header(f"Domain 12: Spatial & Geographic Hotspot Analysis – {selected_site.replace('_', ' ').title()}")
+
+        try:
+            # Discover spatial & vulnerability columns in the households table
+            spat_cols_df = pd.read_sql(
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name = 'households'
+                """,
+                engine
+            )
+            spat_col_list = spat_cols_df['column_name'].tolist()
+
+            def find_col_spat(base):
+                base_l = base.lower()
+                for c in spat_col_list:
+                    if c.lower() == base_l:
+                        return c
+                for c in spat_col_list:
+                    if c.lower().endswith(base_l):
+                        return c
+                for c in spat_col_list:
+                    if base_l in c.lower():
+                        return c
+                return None
+
+            sp_water_src = find_col_spat('three_1_1')
+            sp_fetch_time = find_col_spat('three_1_4')
+            sp_sanitation = find_col_spat('three_1_9')
+            sp_energy = find_col_spat('three_4_11')
+            sp_rooms = find_col_spat('three_4_4')
+            sp_walls = find_col_spat('three_4_5')
+            sp_roof = find_col_spat('three_4_7')
+            sp_members = find_col_spat('total_hh_members')
+            sp_ward_num = find_col_spat('ward_number')
+
+            if sp_water_src is None and sp_sanitation is None:
+                raise Exception("Spatial/vulnerability columns (three_1_1, three_1_9) not found in households table.")
+
+            def sel_expr_spat(col, alias):
+                return f'h."{col}" AS {alias}' if col else f'NULL AS {alias}'
+
+            spat_select = ',\n                    '.join([
+                sel_expr_spat(sp_water_src, 'three_1_1'),
+                sel_expr_spat(sp_fetch_time, 'three_1_4'),
+                sel_expr_spat(sp_sanitation, 'three_1_9'),
+                sel_expr_spat(sp_energy, 'three_4_11'),
+                sel_expr_spat(sp_rooms, 'three_4_4'),
+                sel_expr_spat(sp_walls, 'three_4_5'),
+                sel_expr_spat(sp_roof, 'three_4_7'),
+                sel_expr_spat(sp_members, 'total_hh_members'),
+                sel_expr_spat(sp_ward_num, 'ward_number')
+            ])
+
+            spat_sql = f'''
+                SELECT
+                    h.key, h.pro_name, h.dist_name, h.llg_name, h.ward_name, h.sector, h.dwelling_number,
+                    h.hh_gps_latitude, h.hh_gps_longitude,
+                    h.water_source_gps_latitude, h.water_source_gps_longitude,
+                    h.toilet_gps_latitude, h.toilet_gps_longitude,
+                    {spat_select}
+                FROM households h
+                WHERE h.pro_name = %s
+            '''
+            spat_df = pd.read_sql(spat_sql, engine, params=(selected_site,))
+
+            # Normalize categorical codes and numeric fields
+            for col in ['three_1_1', 'three_1_9', 'three_4_11']:
+                spat_df[col + '_norm'] = (
+                    spat_df[col]
+                    .astype('string')
+                    .fillna('')
+                    .str.strip()
+                    .str.replace(r'\.0$', '', regex=True)
+                    .str.zfill(2)
+                )
+            for col in ['three_1_4', 'three_4_4', 'three_4_5', 'three_4_7', 'total_hh_members']:
+                spat_df[col + '_num'] = pd.to_numeric(spat_df[col], errors='coerce')
+                spat_df.loc[spat_df[col + '_num'] >= 888, col + '_num'] = np.nan
+
+            # Multi-Dimensional Vulnerability Index (MDVI) components
+            spat_df['v_unimproved_water'] = spat_df['three_1_1_norm'].isin(['07', '09', '10']).astype(int)
+            spat_df['v_unsafe_sanitation'] = spat_df['three_1_9_norm'].isin(['08', '09', '10', '11']).astype(int)
+            spat_df['v_energy_poverty'] = spat_df['three_4_11_norm'].isin(['05', '06']).astype(int)
+            ppr = spat_df['total_hh_members_num'] / spat_df['three_4_4_num']
+            spat_df['v_overcrowding'] = (ppr > 2.0).astype(int)
+            spat_df['v_rudimentary'] = (
+                (spat_df['three_4_7_num'] < 7) | (spat_df['three_4_5_num'] < 10)
+            ).astype(int)
+
+            mdvi_cols = ['v_unimproved_water', 'v_unsafe_sanitation', 'v_energy_poverty', 'v_overcrowding', 'v_rudimentary']
+            spat_df['mdvi_score'] = spat_df[mdvi_cols].sum(axis=1)
+            spat_df['high_vuln'] = spat_df['mdvi_score'] >= 3
+
+            # Geodesic (haversine) distance from dwelling to water source (km)
+            gps_pair_cols = ['hh_gps_latitude', 'hh_gps_longitude', 'water_source_gps_latitude', 'water_source_gps_longitude']
+            has_both = spat_df[gps_pair_cols].notna().all(axis=1)
+            spat_df['water_dist_km'] = np.nan
+            if has_both.any():
+                r_earth = 6371.0
+                lat1 = np.radians(spat_df.loc[has_both, 'hh_gps_latitude'].astype(float))
+                lon1 = np.radians(spat_df.loc[has_both, 'hh_gps_longitude'].astype(float))
+                lat2 = np.radians(spat_df.loc[has_both, 'water_source_gps_latitude'].astype(float))
+                lon2 = np.radians(spat_df.loc[has_both, 'water_source_gps_longitude'].astype(float))
+                a = np.sin((lat2 - lat1) / 2) ** 2 + np.cos(lat1) * np.cos(lat2) * np.sin((lon2 - lon1) / 2) ** 2
+                spat_df.loc[has_both, 'water_dist_km'] = 2 * r_earth * np.arcsin(np.sqrt(a))
+
+            # Site-wide metrics
+            total_hh_s = len(spat_df)
+            gps_cov = int(spat_df[['hh_gps_latitude', 'hh_gps_longitude']].notna().all(axis=1).sum())
+            high_vuln_n = int(spat_df['high_vuln'].sum())
+            high_vuln_pct = round(high_vuln_n * 100.0 / total_hh_s, 2) if total_hh_s > 0 else 0
+            water_deficit = int((spat_df['three_1_4_num'] > 30).sum())
+            water_deficit_pct = round(water_deficit * 100.0 / total_hh_s, 2) if total_hh_s > 0 else 0
+            open_defec = int(spat_df['three_1_9_norm'].isin(['10', '11']).sum())
+            open_defec_pct = round(open_defec * 100.0 / total_hh_s, 2) if total_hh_s > 0 else 0
+            mean_water_km = round(spat_df['water_dist_km'].mean(), 2) if spat_df['water_dist_km'].notna().any() else 0
+
+            st.subheader("Site-Wide Spatial & Vulnerability Summary")
+            c1, c2, c3, c4 = st.columns(4)
+            with c1:
+                st.metric("Households with GPS", f"{gps_cov:,}")
+            with c2:
+                st.metric("High Vulnerability HHs (MDVI≥3)", f"{high_vuln_n:,}")
+            with c3:
+                st.metric("Hotspot Rate", f"{high_vuln_pct}%")
+            with c4:
+                st.metric("Mean MDVI Score", round(spat_df['mdvi_score'].mean(), 2))
+
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                st.metric("Water Deficit (>30 min)", f"{water_deficit_pct}%")
+            with c2:
+                st.metric("Open Defecation Rate", f"{open_defec_pct}%")
+            with c3:
+                st.metric("Mean Dist. to Water (km)", f"{mean_water_km}")
+
+            # Vulnerability hotspot map
+            st.markdown("---")
+            st.subheader("Household Vulnerability Hotspot Map")
+            map_df = spat_df.dropna(subset=['hh_gps_latitude', 'hh_gps_longitude'])
+            if not map_df.empty:
+                if len(map_df) > 3000:
+                    st.caption(f"Showing a sample of 3,000 of {len(map_df):,} GPS-mapped households.")
+                    map_df = map_df.sample(3000, random_state=42)
+
+                def mdvi_color(score):
+                    if score >= 3:
+                        return 'red'
+                    elif score == 2:
+                        return 'orange'
+                    return 'green'
+
+                m_hot = folium.Map(
+                    location=[map_df['hh_gps_latitude'].mean(), map_df['hh_gps_longitude'].mean()],
+                    zoom_start=11
+                )
+                for _, r in map_df.iterrows():
+                    folium.CircleMarker(
+                        [r['hh_gps_latitude'], r['hh_gps_longitude']],
+                        radius=5,
+                        color=mdvi_color(r['mdvi_score']),
+                        fill=True,
+                        fill_opacity=0.7,
+                        popup=f"Ward: {r['ward_name']} | MDVI: {int(r['mdvi_score'])}"
+                    ).add_to(m_hot)
+                st_folium(m_hot, width=1000, height=600)
+                st.caption("Green = Low (MDVI 0–1), Orange = Moderate (MDVI 2), Red = High Vulnerability (MDVI ≥3)")
+            else:
+                st.info("No household GPS coordinates available for mapping.")
+
+            # Water distance distribution
+            if spat_df['water_dist_km'].notna().any():
+                st.markdown("---")
+                st.subheader("Geodesic Distance to Water Source")
+                fig_wdist = px.histogram(
+                    spat_df.dropna(subset=['water_dist_km']),
+                    x='water_dist_km', nbins=40,
+                    labels={'water_dist_km': 'Distance to Water Source (km)'},
+                    title='Household-to-Water-Source Distance Distribution'
+                )
+                st.plotly_chart(fig_wdist, use_container_width=True)
+
+            # Ward-level aggregation
+            st.markdown("---")
+            st.subheader("Ward-Level Vulnerability Hotspots")
+
+            ward_df = spat_df.dropna(subset=['ward_name']).copy()
+            ward_data = []
+            for (district, llg, ward), group in ward_df.groupby(['dist_name', 'llg_name', 'ward_name'], dropna=False):
+                total = len(group)
+                g_high = int(group['high_vuln'].sum())
+                g_wdef = int((group['three_1_4_num'] > 30).sum())
+                g_od = int(group['three_1_9_norm'].isin(['10', '11']).sum())
+                ward_data.append({
+                    'District': district,
+                    'LLG': llg,
+                    'Ward': ward,
+                    'Ward Code': group['ward_number'].dropna().iloc[0] if group['ward_number'].notna().any() else None,
+                    'Households': total,
+                    'Mean Latitude': round(group['hh_gps_latitude'].mean(), 5),
+                    'Mean Longitude': round(group['hh_gps_longitude'].mean(), 5),
+                    'High Vuln HHs': g_high,
+                    'Hotspot Rate (%)': round(g_high * 100.0 / total, 2) if total > 0 else 0,
+                    'Water Deficit (%)': round(g_wdef * 100.0 / total, 2) if total > 0 else 0,
+                    'Open Defecation (%)': round(g_od * 100.0 / total, 2) if total > 0 else 0,
+                    'Mean Dist. to Water (km)': round(group['water_dist_km'].mean(), 2) if group['water_dist_km'].notna().any() else None
+                })
+
+            ward_hot_df = pd.DataFrame(ward_data)
+            if not ward_hot_df.empty:
+                ward_hot_df = ward_hot_df.sort_values('Hotspot Rate (%)', ascending=False)
+
+                top_wards = ward_hot_df.head(15)
+                fig_ward_hot = px.bar(
+                    top_wards, x='Ward', y='Hotspot Rate (%)', color='District',
+                    title='Top 15 Wards by Vulnerability Hotspot Rate'
+                )
+                st.plotly_chart(fig_ward_hot, use_container_width=True)
+
+                st.dataframe(ward_hot_df, hide_index=True, use_container_width=True)
+
+                csv_spat = ward_hot_df.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label='Download Spatial Hotspot Analysis (CSV)',
+                    data=csv_spat,
+                    file_name=f'domain12_spatial_hotspots_{selected_site.lower()}.csv',
+                    mime='text/csv'
+                )
+            else:
+                st.info("No ward-level spatial data available for this site.")
+
+            # Key indicators explanation
+            st.markdown("---")
+            st.subheader("Key Indicators Captured")
+            st.markdown("""
+            **Multi-Dimensional Vulnerability Index (MDVI):** Per-household count (0–5) of deprivation flags — unimproved water source, unsafe sanitation, energy poverty, overcrowding (>2 persons/room), and rudimentary housing. Households scoring ≥3 are classified as high-vulnerability hotspots.
+
+            **Ward Hotspot Rate:** Percentage of high-vulnerability households per ward, ranked to identify geographic deprivation clusters for targeted intervention.
+
+            **Geodesic Water Distance:** Haversine distance (km) between dwelling GPS (`hh_gps`) and water source GPS (`water_source_gps`), complementing the reported >30-minute fetch-time deficit rate.
+
+            **Open Defecation Cluster Rate:** Percentage of households reporting open defecation / no sanitation facility (codes 10–11), mapped to identify sanitation priority zones.
+
+            **Administrative Hierarchy:** Province → District → LLG → Ward aggregation supports sub-national choropleth mapping and ward-level resource allocation.
+            """)
+
+        except Exception as e:
+            if 'three_1' in str(e) or 'three_4' in str(e) or 'gps' in str(e).lower():
+                st.info("Spatial/vulnerability columns (hh_gps, three_1_*, three_4_*) are not available in the current dataset. Domain 12 analysis is not possible.")
+            else:
+                st.error(f"Error running spatial hotspot analysis: {e}")
+
     # ==================== TAB 1: Overview ====================
     with tab1:
         st.header(f"Overview – {selected_site.replace('_', ' ').title()}")
