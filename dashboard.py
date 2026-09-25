@@ -2774,6 +2774,260 @@ def main():
             else:
                 st.error(f"Error running food security analysis: {e}")
 
+            # ==================== DOMAIN 10: HEALTH ACCESS & MORTALITY ====================
+        st.markdown("---")
+        st.header(f"Domain 10: Health Access & Mortality – {selected_site.replace('_', ' ').title()}")
+
+        try:
+            # Discover mortality columns (households) and birth columns (individuals)
+            health_cols_df = pd.read_sql(
+                """
+                SELECT table_name, column_name
+                FROM information_schema.columns
+                WHERE table_name IN ('households', 'individuals')
+                """,
+                engine
+            )
+            hh_col_list = health_cols_df.loc[health_cols_df['table_name'] == 'households', 'column_name'].tolist()
+            ind_col_list = health_cols_df.loc[health_cols_df['table_name'] == 'individuals', 'column_name'].tolist()
+
+            def find_col_health(base, col_list):
+                for c in col_list:
+                    if base in c:
+                        return c
+                return None
+
+            mort_71 = find_col_health('three_7_1', hh_col_list)
+            mort_72 = find_col_health('three_7_2', hh_col_list)
+            mort_name_cols = [find_col_health(f'three_7_3_{i}', hh_col_list) for i in range(1, 4)]
+
+            if mort_71 is None and mort_72 is None:
+                raise Exception("Mortality columns (three_7_1, three_7_2) not found in households table.")
+
+            def sel_expr_health(col, alias):
+                return f'h."{col}" AS {alias}' if col else f'NULL AS {alias}'
+
+            mort_select = ',\n                '.join(
+                [sel_expr_health(mort_71, 'three_7_1'), sel_expr_health(mort_72, 'three_7_2')] +
+                [sel_expr_health(c, f'three_7_3_{i}') for i, c in enumerate(mort_name_cols, start=1)]
+            )
+
+            mort_sql = f'''
+                SELECT
+                    h.key, h.pro_name, h.dist_name, h.llg_name, h.ward_name, h.sector, h.dwelling_number,
+                    {mort_select}
+                FROM households h
+                WHERE h.pro_name = %s
+            '''
+            mort_df = pd.read_sql(mort_sql, engine, params=(selected_site,))
+
+            # Normalize mortality codes (01 = Yes, 02 = No) and death count
+            mort_df['three_7_1_norm'] = (
+                mort_df['three_7_1']
+                .astype('string')
+                .fillna('')
+                .str.strip()
+                .str.replace(r'\.0$', '', regex=True)
+                .str.zfill(2)
+            )
+            mort_df['three_7_2_num'] = pd.to_numeric(mort_df['three_7_2'], errors='coerce')
+            mort_df.loc[mort_df['three_7_2_num'] >= 888, 'three_7_2_num'] = np.nan
+
+            # Individual birth records (place of birth)
+            birth_fac_col = find_col_health('birth_health_fac', ind_col_list)
+            birth_vill_col = find_col_health('birth_vill_name', ind_col_list)
+            birth_dist_col = find_col_health('birth_dist_name', ind_col_list)
+
+            birth_df = pd.DataFrame()
+            birth_geo = pd.DataFrame()
+            if birth_fac_col or birth_vill_col:
+                def sel_expr_birth(col, alias):
+                    return f'i."{col}" AS {alias}' if col else f'NULL AS {alias}'
+
+                birth_select = ',\n                    '.join([
+                    sel_expr_birth(birth_fac_col, 'birth_health_fac'),
+                    sel_expr_birth(birth_vill_col, 'birth_vill_name'),
+                    sel_expr_birth(birth_dist_col, 'birth_dist_name')
+                ])
+                birth_sql = f'''
+                    SELECT i.parent_key, {birth_select}
+                    FROM individuals i
+                    WHERE i.parent_key IN (SELECT key FROM households WHERE pro_name = %s)
+                '''
+                birth_df = pd.read_sql(birth_sql, engine, params=(selected_site,))
+
+                # Classify place of birth
+                fac_str = birth_df['birth_health_fac'].astype('string').fillna('').str.strip()
+                vill_str = birth_df['birth_vill_name'].astype('string').fillna('').str.strip()
+                is_facility = fac_str.ne('') & ~fac_str.str.lower().str.contains('home|village', na=False)
+                is_home = (~is_facility) & (
+                    fac_str.str.lower().str.contains('home|village', na=False) | vill_str.ne('')
+                )
+                birth_df['birth_place'] = np.select(
+                    [is_facility, is_home],
+                    ['Health Facility', 'Home / Village'],
+                    default='Not Recorded'
+                )
+                birth_geo = birth_df.merge(
+                    mort_df[['key', 'dist_name', 'sector']],
+                    left_on='parent_key', right_on='key', how='left'
+                )
+
+            # Site-wide metrics
+            total_hh_m = len(mort_df)
+            hhs_with_deaths = int((mort_df['three_7_1_norm'] == '01').sum())
+            hh_mort_prev = round(hhs_with_deaths * 100.0 / total_hh_m, 2) if total_hh_m > 0 else 0
+            total_deaths = int(mort_df['three_7_2_num'].sum()) if mort_df['three_7_2_num'].notna().any() else 0
+            crude_rate = round(total_deaths * 1000.0 / total_ind_site, 2) if total_ind_site > 0 else 0
+
+            st.subheader("Site-Wide Health Access & Mortality Summary")
+            c1, c2, c3, c4 = st.columns(4)
+            with c1:
+                st.metric("HHs Reporting Deaths (12m)", f"{hhs_with_deaths:,}")
+            with c2:
+                st.metric("Mortality Prevalence", f"{hh_mort_prev}%")
+            with c3:
+                st.metric("Total Recorded Deaths", f"{total_deaths:,}")
+            with c4:
+                st.metric("Crude Death Rate /1,000", f"{crude_rate}")
+
+            if not birth_df.empty:
+                total_births = len(birth_df)
+                facility_births = int((birth_df['birth_place'] == 'Health Facility').sum())
+                home_births = int((birth_df['birth_place'] == 'Home / Village').sum())
+                facility_rate = round(facility_births * 100.0 / total_births, 2) if total_births > 0 else 0
+                home_rate = round(home_births * 100.0 / total_births, 2) if total_births > 0 else 0
+
+                c1, c2, c3 = st.columns(3)
+                with c1:
+                    st.metric("Facility Delivery Rate", f"{facility_rate}%")
+                with c2:
+                    st.metric("Home / Village Births", f"{home_rate}%")
+                with c3:
+                    st.metric("Birth Records", f"{total_births:,}")
+            else:
+                st.info("Birth location columns (birth_health_fac, birth_vill_name) not found in the individuals table; facility delivery metrics are unavailable.")
+
+            # Visualizations
+            st.markdown("---")
+            st.subheader("Mortality & Place of Birth")
+            v1, v2 = st.columns(2)
+            with v1:
+                death_status = mort_df['three_7_1_norm'].map({'01': 'Death(s) Reported', '02': 'No Deaths'}).fillna('No Response')
+                death_counts = death_status.value_counts().reset_index()
+                death_counts.columns = ['Status', 'Households']
+                fig_deaths = px.pie(
+                    death_counts, values='Households', names='Status', hole=0.4,
+                    title='Households Reporting Deaths (Last 12 Months)'
+                )
+                st.plotly_chart(fig_deaths, use_container_width=True)
+            with v2:
+                if not birth_df.empty:
+                    place_counts = birth_df['birth_place'].value_counts().reset_index()
+                    place_counts.columns = ['Place of Birth', 'Individuals']
+                    fig_birth = px.pie(
+                        place_counts, values='Individuals', names='Place of Birth', hole=0.4,
+                        title='Place of Birth (Facility vs Home/Village)'
+                    )
+                    st.plotly_chart(fig_birth, use_container_width=True)
+
+            # Births by district of birth (travel/migration proxy)
+            if not birth_df.empty and 'birth_dist_name' in birth_df.columns:
+                dist_births = birth_df['birth_dist_name'].astype('string').fillna('').str.strip()
+                dist_births = dist_births[dist_births.ne('')]
+                if not dist_births.empty:
+                    dist_counts = dist_births.value_counts().head(15).reset_index()
+                    dist_counts.columns = ['District of Birth', 'Individuals']
+                    fig_bdist = px.bar(
+                        dist_counts, x='District of Birth', y='Individuals',
+                        title='Births by District of Birth (Top 15)'
+                    )
+                    st.plotly_chart(fig_bdist, use_container_width=True)
+
+            # Deceased member roster (verbal autopsy follow-up)
+            st.markdown("---")
+            st.subheader("Deceased Member Roster (Verbal Autopsy Follow-up)")
+            deceased = mort_df[mort_df['three_7_1_norm'] == '01'].copy()
+            if not deceased.empty:
+                name_cols = [f'three_7_3_{i}' for i in range(1, 4)]
+                for nc in name_cols:
+                    deceased[nc] = deceased[nc].astype('string').fillna('').str.strip()
+                deceased['Deceased Names'] = deceased[name_cols].apply(
+                    lambda r: '; '.join([v for v in r if v and v.lower() != 'nan']), axis=1
+                )
+                roster = deceased[['dist_name', 'ward_name', 'dwelling_number', 'three_7_2_num', 'Deceased Names']].rename(columns={
+                    'dist_name': 'District',
+                    'ward_name': 'Ward',
+                    'dwelling_number': 'Dwelling No.',
+                    'three_7_2_num': 'Deaths'
+                })
+                st.dataframe(roster, hide_index=True, use_container_width=True)
+            else:
+                st.info("No households reported deaths in the last 12 months.")
+
+            # District and sector breakdown
+            st.markdown("---")
+            st.subheader("Health Access & Mortality by District & Sector")
+
+            sector_map_d10 = {'01': 'Urban', '02': 'Peri-Urban', '03': 'Settlement', '04': 'Rural'}
+            health_district_data = []
+            for (district, sector), group in mort_df.groupby(['dist_name', 'sector']):
+                total = len(group)
+                g_deaths_hh = int((group['three_7_1_norm'] == '01').sum())
+                g_deaths = int(group['three_7_2_num'].sum())
+                row = {
+                    'District': district,
+                    'Sector Code': sector,
+                    'Sector': sector_map_d10.get(str(sector).zfill(2), 'Unclassified'),
+                    'Households': total,
+                    'HHs with Deaths': g_deaths_hh,
+                    'Mortality Prevalence (%)': round(g_deaths_hh * 100.0 / total, 2) if total > 0 else 0,
+                    'Total Deaths': g_deaths
+                }
+                if not birth_geo.empty:
+                    g_births = birth_geo[(birth_geo['dist_name'] == district) & (birth_geo['sector'] == sector)]
+                    g_total_b = len(g_births)
+                    row['Facility Delivery (%)'] = round((g_births['birth_place'] == 'Health Facility').sum() * 100.0 / g_total_b, 2) if g_total_b > 0 else 0
+                    row['Home/Village Birth (%)'] = round((g_births['birth_place'] == 'Home / Village').sum() * 100.0 / g_total_b, 2) if g_total_b > 0 else 0
+                health_district_data.append(row)
+
+            health_district_df = pd.DataFrame(health_district_data)
+            if not health_district_df.empty:
+                st.dataframe(health_district_df, hide_index=True, use_container_width=True)
+
+                csv_health = health_district_df.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label='Download Health Access & Mortality Analysis (CSV)',
+                    data=csv_health,
+                    file_name=f'domain10_health_mortality_{selected_site.lower()}.csv',
+                    mime='text/csv'
+                )
+            else:
+                st.info("No district/sector health data available for this site.")
+
+            # Key indicators explanation
+            st.markdown("---")
+            st.subheader("Key Indicators Captured")
+            st.markdown("""
+            **Household Mortality Prevalence:** Percentage of households reporting at least one death in the past 12 months (`three_7_1` = Yes).
+
+            **Total Recorded Deaths & Crude Death Rate:** Aggregate deaths (`three_7_2`) and deaths per 1,000 surveillance population.
+
+            **Institutional Facility Delivery Rate:** Percentage of individuals born in a named health facility — a proxy for skilled birth attendance.
+
+            **Home / Village Birth Rate:** Percentage of births recorded at home or in the village without a named facility.
+
+            **Deceased Member Roster:** Names of deceased household members (`three_7_3_1`–`three_7_3_3`) to support verbal autopsy follow-up.
+
+            *Note: Geodesic distance to the nearest health facility and facility coverage density require an external health facility master list with GPS coordinates, which is not stored in this database.*
+            """)
+
+        except Exception as e:
+            if 'three_7' in str(e) or 'birth_' in str(e):
+                st.info("Mortality/birth columns (three_7_*, birth_health_fac, birth_vill_name) are not available in the current dataset. Domain 10 analysis is not possible.")
+            else:
+                st.error(f"Error running health access & mortality analysis: {e}")
+
     # ==================== TAB 1: Overview ====================
     with tab1:
         st.header(f"Overview – {selected_site.replace('_', ' ').title()}")
