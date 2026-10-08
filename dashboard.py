@@ -3683,18 +3683,19 @@ def main():
         try:
             missing_gps_query = """
             SELECT
-                ward_name,
-                location_name AS "Village",
-                location_num AS "Location Number",
-                dwelling_number AS "Household Number",
-                CASE consent_hhses_three_4_1
+                h.ward_name,
+                h.location_name AS "Village",
+                h.location_num AS "Location Number",
+                h.dwelling_number AS "Household Number",
+                CONCAT(head.indiv_fname, ' ', head.indiv_lname) AS "Household Head Name",
+                CASE h.consent_hhses_three_4_1
                     WHEN 1 THEN 'Traditional (Bush materials)'
                     WHEN 2 THEN 'Semi-permanent house'
                     WHEN 3 THEN 'Permanent house'
-                    ELSE CAST(consent_hhses_three_4_1 AS TEXT)
+                    ELSE CAST(h.consent_hhses_three_4_1 AS TEXT)
                 END AS "Type of Household",
 
-                CASE consent_hhses_three_1_1
+                CASE h.consent_hhses_three_1_1
                     WHEN 1 THEN 'Piped into dwelling'
                     WHEN 2 THEN 'Piped into compound, yard or plot'
                     WHEN 3 THEN 'Piped to neighbour'
@@ -3710,10 +3711,10 @@ def main():
                     WHEN 13 THEN 'Bottled water'
                     WHEN 14 THEN 'Container'
                     WHEN 15 THEN 'Other (specify)'
-                    ELSE CAST(consent_hhses_three_1_1 AS TEXT)
+                    ELSE CAST(h.consent_hhses_three_1_1 AS TEXT)
                 END AS "Main source of Drinking Water",
 
-                CASE consent_hhses_three_1_3
+                CASE h.consent_hhses_three_1_3
                     WHEN 1 THEN 'Piped into dwelling'
                     WHEN 2 THEN 'Piped into compound, yard or plot'
                     WHEN 3 THEN 'Piped to neighbour'
@@ -3729,10 +3730,10 @@ def main():
                     WHEN 13 THEN 'Bottled water'
                     WHEN 14 THEN 'Container'
                     WHEN 15 THEN 'Other (specify)'
-                    ELSE CAST(consent_hhses_three_1_3 AS TEXT)
+                    ELSE CAST(h.consent_hhses_three_1_3 AS TEXT)
                 END AS "cooking and hand washing water source",
 
-                CASE consent_hhses_three_1_9
+                CASE h.consent_hhses_three_1_9
                     WHEN 1 THEN 'Flush to piped sewer system'
                     WHEN 2 THEN 'Flush to septic tank'
                     WHEN 3 THEN 'Flush to pit (latrine)'
@@ -3746,83 +3747,86 @@ def main():
                     WHEN 11 THEN 'Open defecation (No facility/ Sea/River)'
                     WHEN 12 THEN 'Other (specify)'
                     WHEN 888 THEN 'Don''t know'
-                    ELSE CAST(consent_hhses_three_1_9 AS TEXT)
+                    ELSE CAST(h.consent_hhses_three_1_9 AS TEXT)
                 END AS "Types of Toilet",
-                four_3_1 AS "Data Collector",
-                four_5_1 AS "Quality Checker",
-                interview_date_time_1 AS "Interview Date/Time",
-                four_1_1 AS "Interview Result",
-                four_3_2 AS "Interviewer Comments and Observations",
-                
+                h.four_3_1 AS "Data Collector",
+                h.four_5_1 AS "Quality Checker",
+                h.interview_date_time_1 AS "Interview Date/Time",
+                h.four_1_1 AS "Interview Result",
+                h.four_3_2 AS "Interviewer Comments and Observations",
+
                 -- Original GPS Status Columns
                 CASE
-                    WHEN hh_gps_latitude IS NULL OR hh_gps_longitude IS NULL OR hh_gps_altitude IS NULL
+                    WHEN h.hh_gps_latitude IS NULL OR h.hh_gps_longitude IS NULL OR h.hh_gps_altitude IS NULL
                     THEN 'Missing'
                     ELSE 'Complete'
                 END AS "Household GPS",
                 
-                CASE 
-                    WHEN water_source_gps_latitude IS NULL OR water_source_gps_longitude IS NULL OR water_source_gps_altitude IS NULL 
-                    THEN 'Missing' 
-                    ELSE 'Complete' 
+                CASE
+                    WHEN h.water_source_gps_latitude IS NULL OR h.water_source_gps_longitude IS NULL OR h.water_source_gps_altitude IS NULL
+                    THEN 'Missing'
+                    ELSE 'Complete'
                 END AS "Water Source GPS",
-                
-                CASE 
-                    WHEN toilet_gps_latitude IS NULL OR toilet_gps_longitude IS NULL OR toilet_gps_altitude IS NULL 
-                    THEN 'Missing' 
-                    ELSE 'Complete' 
+
+                CASE
+                    WHEN h.toilet_gps_latitude IS NULL OR h.toilet_gps_longitude IS NULL OR h.toilet_gps_altitude IS NULL
+                    THEN 'Missing'
+                    ELSE 'Complete'
                 END AS "Toilet GPS",
-                
+
                 -- New Accuracy Columns
-                CASE 
-                    WHEN hh_gps_accuracy IS NULL THEN 'N/A'
-                    WHEN hh_gps_accuracy > 5 THEN CONCAT('Inaccurate (', hh_gps_accuracy::int, 'm)')
-                    ELSE CONCAT('Accurate (', hh_gps_accuracy::int, 'm)')
+                CASE
+                    WHEN h.hh_gps_accuracy IS NULL THEN 'N/A'
+                    WHEN h.hh_gps_accuracy > 5 THEN CONCAT('Inaccurate (', h.hh_gps_accuracy::int, 'm)')
+                    ELSE CONCAT('Accurate (', h.hh_gps_accuracy::int, 'm)')
                 END AS "Household GPS Accuracy",
-                
-                CASE 
-                    WHEN water_source_gps_accuracy IS NULL THEN 'N/A'
-                    WHEN water_source_gps_accuracy > 5 THEN CONCAT('Inaccurate (', water_source_gps_accuracy::int, 'm)')
-                    ELSE CONCAT('Accurate (', water_source_gps_accuracy::int, 'm)')
+
+                CASE
+                    WHEN h.water_source_gps_accuracy IS NULL THEN 'N/A'
+                    WHEN h.water_source_gps_accuracy > 5 THEN CONCAT('Inaccurate (', h.water_source_gps_accuracy::int, 'm)')
+                    ELSE CONCAT('Accurate (', h.water_source_gps_accuracy::int, 'm)')
                 END AS "Water Source GPS Accuracy",
-                
-                CASE 
-                    WHEN toilet_gps_accuracy IS NULL THEN 'N/A'
-                    WHEN toilet_gps_accuracy > 5 THEN CONCAT('Inaccurate (', toilet_gps_accuracy::int, 'm)')
-                    ELSE CONCAT('Accurate (', toilet_gps_accuracy::int, 'm)')
+
+                CASE
+                    WHEN h.toilet_gps_accuracy IS NULL THEN 'N/A'
+                    WHEN h.toilet_gps_accuracy > 5 THEN CONCAT('Inaccurate (', h.toilet_gps_accuracy::int, 'm)')
+                    ELSE CONCAT('Accurate (', h.toilet_gps_accuracy::int, 'm)')
                 END AS "Toilet GPS Accuracy"
 
-            FROM households
-            WHERE 
-                agree_yes = 1
-                AND pro_name = %s
+            FROM households h
+            LEFT JOIN individuals head
+                ON h.key = head.parent_key
+                AND head.relo_to_hh = 1
+            WHERE
+                h.agree_yes = 1
+                AND h.pro_name = %s
                 AND (
                     -- Missing or Inaccurate Household GPS
-                    (hh_gps_latitude IS NULL 
-                    OR hh_gps_longitude IS NULL 
-                    OR hh_gps_altitude IS NULL
-                    OR hh_gps_accuracy > 5
-                    OR hh_gps_accuracy IS NULL)
+                    (h.hh_gps_latitude IS NULL
+                    OR h.hh_gps_longitude IS NULL
+                    OR h.hh_gps_altitude IS NULL
+                    OR h.hh_gps_accuracy > 5
+                    OR h.hh_gps_accuracy IS NULL)
 
                     OR
 
                     -- Missing or Inaccurate Water Source GPS
-                    (water_source_gps_latitude IS NULL
-                    OR water_source_gps_longitude IS NULL
-                    OR water_source_gps_altitude IS NULL
-                    OR water_source_gps_accuracy > 5
-                    OR water_source_gps_accuracy IS NULL)
+                    (h.water_source_gps_latitude IS NULL
+                    OR h.water_source_gps_longitude IS NULL
+                    OR h.water_source_gps_altitude IS NULL
+                    OR h.water_source_gps_accuracy > 5
+                    OR h.water_source_gps_accuracy IS NULL)
 
                     OR
 
                     -- Missing or Inaccurate Toilet GPS
-                    (toilet_gps_latitude IS NULL
-                    OR toilet_gps_longitude IS NULL
-                    OR toilet_gps_altitude IS NULL
-                    OR toilet_gps_accuracy > 5
-                    OR toilet_gps_accuracy IS NULL)
+                    (h.toilet_gps_latitude IS NULL
+                    OR h.toilet_gps_longitude IS NULL
+                    OR h.toilet_gps_altitude IS NULL
+                    OR h.toilet_gps_accuracy > 5
+                    OR h.toilet_gps_accuracy IS NULL)
                 )
-            ORDER BY location_name, location_num, four_1_1;
+            ORDER BY h.location_name, h.location_num, h.four_1_1;
             """
             
             # Execute the query with the selected site parameter
@@ -3884,6 +3888,10 @@ def main():
                         "Household Number": st.column_config.NumberColumn(
                             "Household Number",
                             help="Household dwelling number"
+                        ),
+                        "Household Head Name": st.column_config.TextColumn(
+                            "Household Head Name",
+                            help="Name of the household head"
                         ),
                         "Type of Household": st.column_config.TextColumn(
                             "Type of Household",
@@ -5015,28 +5023,6 @@ def main():
                     h.four_3_1 AS data_collector,
                     h.four_5_1 AS data_quality_check_by,
                     h.four_1_1 AS result_of_interview,
-                    h.submittername,
-            
-                    CONCAT(head.indiv_fname, ' ', head.indiv_lname) AS household_head_name,
-            
-                    CONCAT(i.indiv_fname, ' ', i.indiv_lname) AS individual_name,
-                    i.indiv_line_num,
-                    i.relo_to_hh,
-            
-                    -- DOB fields
-                    i.day_birth,
-                    i.month_birth,
-                    i.year_birth,
-            
-                    -- Age fields
-                    i.age_category,
-                    i.age_year,
-                    i.age_month,
-                    i.age_days,
-            
-                    -- Estimated ages
-                    i.est_age_years,
-                    i.est_age_month,
                     i.est_age_days,
             
                     CASE
