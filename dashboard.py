@@ -5019,7 +5019,8 @@ def main():
                     h.ward_name,
                     h.location_name,
                     h.dwelling_number,
-            
+                    CONCAT(head.indiv_fname, ' ', head.indiv_lname) AS household_head_name,
+
                     h.four_3_1 AS data_collector,
                     h.four_5_1 AS data_quality_check_by,
                     h.four_1_1 AS result_of_interview,
