@@ -5020,6 +5020,7 @@ def main():
                     h.location_name,
                     h.dwelling_number,
                     CONCAT(head.indiv_fname, ' ', head.indiv_lname) AS household_head_name,
+                    CONCAT(i.indiv_fname, ' ', i.indiv_lname) AS individual_name,
 
                     h.four_3_1 AS data_collector,
                     h.four_5_1 AS data_quality_check_by,
