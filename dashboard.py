@@ -3616,6 +3616,50 @@ def main():
                 hide_index=True,
                 use_container_width=True
             )
+
+        st.markdown("---")
+        st.subheader("Data Collected by Location/Village")
+        if 'location_name' in site_hh_df.columns:
+            location_counts = site_hh_df['location_name'].value_counts().reset_index()
+            location_counts.columns = ['Location', 'Households']
+
+            # Population per location (individuals joined to households)
+            hh_keys_loc = site_hh_df[['key', 'location_name']].copy()
+            hh_keys_loc['key'] = hh_keys_loc['key'].astype(str)
+            site_ind_loc = ind_df.copy()
+            site_ind_loc['parent_key'] = site_ind_loc['parent_key'].astype(str)
+            site_ind_loc = site_ind_loc[site_ind_loc['parent_key'].isin(hh_keys_loc['key'])]
+            location_pop = (
+                site_ind_loc.merge(hh_keys_loc, left_on='parent_key', right_on='key')
+                .groupby('location_name')
+                .size()
+                .reset_index(name='Population')
+            )
+            location_pop.columns = ['Location', 'Population']
+
+            location_counts = location_counts.merge(location_pop, on='Location', how='left')
+            location_counts['Population'] = location_counts['Population'].fillna(0).astype(int)
+            location_counts = location_counts.sort_values('Households', ascending=False)
+
+            fig_location = px.bar(
+                location_counts,
+                x='Location',
+                y=['Households', 'Population'],
+                barmode='group',
+                title="Households & Population per Location/Village"
+            )
+            st.plotly_chart(fig_location, use_container_width=True)
+
+            st.dataframe(
+                location_counts,
+                column_config={
+                    'Location': st.column_config.TextColumn("Location/Village"),
+                    'Households': st.column_config.NumberColumn("Households", format='%d'),
+                    'Population': st.column_config.NumberColumn("Population", format='%d')
+                },
+                hide_index=True,
+                use_container_width=True
+            )
     # ==================== TAB 2: Sector Analysis ====================
     with tab2:
         st.header(f"Sector Analysis – {selected_site.replace('_', ' ').title()}")
