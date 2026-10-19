@@ -5408,6 +5408,160 @@ def main():
         except Exception as e:
             st.error(f"Error running GPS quality query: {e}")
 
+    # ==================== TAB: Progressive Tally and Stats ====================
+    with tab_tally:
+        st.header("Progressive Tally and Stats")
+        
+        try:
+            # Get dashboard update date (latest submission date)
+            latest_submission = hh_df['submissiondate'].max()
+            if pd.notna(latest_submission):
+                update_date = latest_submission.strftime('%Y-%m-%d %H:%M:%S')
+            else:
+                update_date = "N/A"
+            
+            # Calculate totals across all sites
+            total_houses_submitted = len(hh_df)
+            total_pop_submitted = len(ind_df)
+            
+            # Calculate total unique wards/villages
+            total_wards = hh_df['ward_name'].nunique()
+            
+            # Calculate old and new wards (assuming we can identify this by some criteria)
+            # For now, we'll use a placeholder - you may need to adjust based on your data
+            total_old_wards = hh_df[hh_df['ward_name'].notna()]['ward_name'].nunique() // 2  # Placeholder
+            total_new_wards = total_wards - total_old_wards  # Placeholder
+            
+            # Display summary metrics
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Dashboard Update Date", update_date)
+            with col2:
+                st.metric("Total Houses Submitted", f"{total_houses_submitted:,}")
+            with col3:
+                st.metric("Total Pop. Submitted", f"{total_pop_submitted:,}")
+            
+            col4, col5, col6 = st.columns(3)
+            with col4:
+                st.metric("Total Wards/Villages", total_wards)
+            with col5:
+                st.metric("Total Old Wards/Village", total_old_wards)
+            with col6:
+                st.metric("Total New Wards/Village", total_new_wards)
+            
+            st.markdown("---")
+            st.subheader("Progressive Tally by Site and Sector")
+            
+            # Define site mapping
+            site_mapping = {
+                'east_sepik': 'ESP',
+                'eastern_highlands': 'EHP',
+                'east_new_britian': 'ENB',
+                'central': 'Central-NCD',
+                'ncd': 'Central-NCD'
+            }
+            
+            # Define sectors
+            sectors = ['Urban', 'Urban settlement', 'Peri-urban', 'Rural/Remote rural']
+            
+            # Initialize data structure for the table
+            tally_data = []
+            
+            # Calculate data for each sector and site
+            for sector in sectors:
+                row_data = {'Sector': sector}
+                
+                # For each site column (ESP, EHP, ENB, Central-NCD, All)
+                for site_code in ['ESP', 'EHP', 'ENB', 'Central-NCD', 'All']:
+                    if site_code == 'All':
+                        # All sites combined
+                        sector_df = hh_df[hh_df['sector_name'] == sector]
+                        hh_count = len(sector_df)
+                        pop_count = len(ind_df[ind_df['parent_key'].isin(sector_df['key'])])
+                    else:
+                        # Specific site
+                        if site_code == 'ESP':
+                            site_filter = hh_df['pro_name'].str.lower() == 'east_sepik'
+                        elif site_code == 'EHP':
+                            site_filter = hh_df['pro_name'].str.lower() == 'eastern_highlands'
+                        elif site_code == 'ENB':
+                            site_filter = hh_df['pro_name'].str.lower() == 'east_new_britian'
+                        elif site_code == 'Central-NCD':
+                            site_filter = (hh_df['pro_name'].str.lower() == 'central') | (hh_df['pro_name'].str.lower() == 'ncd')
+                        
+                        sector_df = hh_df[site_filter & (hh_df['sector_name'] == sector)]
+                        hh_count = len(sector_df)
+                        pop_count = len(ind_df[ind_df['parent_key'].isin(sector_df['key'])])
+                    
+                    row_data[f'{site_code}_HH'] = hh_count
+                    row_data[f'{site_code}_POP'] = pop_count
+                
+                tally_data.append(row_data)
+            
+            # Calculate Total row
+            total_row = {'Sector': 'Total'}
+            for site_code in ['ESP', 'EHP', 'ENB', 'Central-NCD', 'All']:
+                total_hh = sum(row[f'{site_code}_HH'] for row in tally_data)
+                total_pop = sum(row[f'{site_code}_POP'] for row in tally_data)
+                total_row[f'{site_code}_HH'] = total_hh
+                total_row[f'{site_code}_POP'] = total_pop
+            tally_data.append(total_row)
+            
+            # Create DataFrame
+            tally_df = pd.DataFrame(tally_data)
+            
+            # Reorder columns to match the requested format
+            column_order = ['Sector']
+            for site_code in ['ESP', 'EHP', 'ENB', 'Central-NCD', 'All']:
+                column_order.extend([f'{site_code}_HH', f'{site_code}_POP'])
+            tally_df = tally_df[column_order]
+            
+            # Rename columns to match the requested format
+            column_rename = {'Sector': 'Progressive Tally by Site and Sector'}
+            for site_code in ['ESP', 'EHP', 'ENB', 'Central-NCD', 'All']:
+                column_rename[f'{site_code}_HH'] = f'{site_code} HH'
+                column_rename[f'{site_code}_POP'] = f'{site_code} POP'
+            tally_df = tally_df.rename(columns=column_rename)
+            
+            # Display the table
+            st.dataframe(
+                tally_df,
+                column_config={
+                    col: st.column_config.NumberColumn(col, format="%d") if 'HH' in col or 'POP' in col else col
+                    for col in tally_df.columns
+                },
+                hide_index=True,
+                use_container_width=True
+            )
+            
+            # Calculate and display % Completion and Remaining
+            st.subheader("Completion Status")
+            
+            # Assuming targets (you may need to adjust these based on your actual targets)
+            # For now using placeholder values
+            target_hh = 10000  # Placeholder target
+            target_pop = 50000  # Placeholder target
+            
+            completion_hh = (total_houses_submitted / target_hh * 100) if target_hh > 0 else 0
+            remaining_hh = target_hh - total_houses_submitted
+            
+            completion_pop = (total_pop_submitted / target_pop * 100) if target_pop > 0 else 0
+            remaining_pop = target_pop - total_pop_submitted
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("% Completion (Households)", f"{completion_hh:.2f}%")
+                st.metric("Remaining Households", f"{max(0, remaining_hh):,}")
+            with col2:
+                st.metric("% Completion (Population)", f"{completion_pop:.2f}%")
+                st.metric("Remaining Population", f"{max(0, remaining_pop):,}")
+            
+            st.info("Note: Target values for completion calculation are placeholders. Please update with actual targets.")
+            
+        except Exception as e:
+            st.error(f"Error generating progressive tally: {e}")
+            st.exception(e)
+
 # Call the main function to actually run the app
 if __name__ == "__main__":
     main()
