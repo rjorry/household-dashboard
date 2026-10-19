@@ -75,8 +75,8 @@ def main():
     st.caption(f"**{selected_site.replace('_', ' ').title()}** → {total_hh_site:,} households | {total_ind_site:,} individuals")
 
     # ==================== TABS (including new Report tab) ====================
-    tab1, tab2, tab3, tab4, tab5, tab_report = st.tabs([
-        "Overview", "Sector Analysis", "Data Collectors", "GPS Mapping", "Data Quality", "Report"
+    tab1, tab2, tab3, tab4, tab5, tab_report, tab_tally = st.tabs([
+        "Overview", "Sector Analysis", "Data Collectors", "GPS Mapping", "Data Quality", "Report", "Progressive Tally and Stats"
     ])
 
     # ==================== TAB: Report ====================
