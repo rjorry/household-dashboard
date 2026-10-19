@@ -47,7 +47,7 @@ def main():
 
     # Site list & sector mapping
     sites = ['central', 'east_new_britian', 'eastern_highlands', 'ncd', 'east_sepik']
-    sector_map = {1: 'Urban', 2: 'Peri-Urban', 3: 'Settlement', 4: 'Rural'}
+    sector_map = {1: 'Urban', 2: 'Peri-urban', 3: 'Urban settlement', 4: 'Rural/Remote rural'}
     hh_df['sector_name'] = pd.to_numeric(hh_df['sector'], errors='coerce').map(sector_map)
     
     # Convert submissiondate to datetime
