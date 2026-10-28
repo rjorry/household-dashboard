@@ -4776,7 +4776,17 @@ def main():
                     h.interview_date_time_1 AS interview_datetime,
                     CONCAT(i.indiv_fname, ' ', i.indiv_lname) AS full_name,
                     i.relo_to_hh AS relationship_to_head,
-                    i.sex
+                    i.sex,
+                    CASE h.four_1_1
+                        WHEN 1 THEN 'Completed'
+                        WHEN 2 THEN 'Partially completed'
+                        WHEN 3 THEN 'Household refused to participate'
+                        WHEN 4 THEN 'Entire household migrated out/absent for extended period'
+                        WHEN 5 THEN 'No competent respondent available at home'
+                        WHEN 6 THEN 'Other (Specify)'
+                        ELSE CAST(h.four_1_1 AS TEXT)
+                    END AS interview_result,
+                    h.four_3_2 AS interview_comments
                 FROM households h
                 JOIN individuals i
                     ON h.key = i.parent_key
@@ -4784,6 +4794,7 @@ def main():
                 AND h.pro_name = %s
                 AND i.sex IS NULL;
                 """
+
                 # Execute the query
                 missing_sex_df = pd.read_sql(missing_sex_query, engine, params=(selected_site,))
 
