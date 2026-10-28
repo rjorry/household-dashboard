@@ -3798,6 +3798,7 @@ def main():
                 h.interview_date_time_1 AS "Interview Date/Time",
                 h.four_1_1 AS "Interview Result",
                 h.four_3_2 AS "Interviewer Comments and Observations",
+                h.four_5_2 AS "Quality Checker Comments",
 
                 -- Original GPS Status Columns
                 CASE
@@ -3869,6 +3870,10 @@ def main():
                     OR h.toilet_gps_altitude IS NULL
                     OR h.toilet_gps_accuracy > 5
                     OR h.toilet_gps_accuracy IS NULL)
+                    AND NOT (
+                        LOWER(h.four_3_2) LIKE '%open defecation%'
+                        OR LOWER(h.four_5_2) LIKE '%open defecation%'
+                    )
                 )
             ORDER BY h.location_name, h.location_num, h.four_1_1;
             """
