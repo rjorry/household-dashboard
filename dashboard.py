@@ -3727,6 +3727,7 @@ def main():
         try:
             missing_gps_query = """
             SELECT
+                h.key,
                 h.ward_name,
                 h.location_name AS "Village",
                 h.location_num AS "Location Number",
@@ -3999,6 +4000,7 @@ def main():
                 # Query for households with missing consent
                 missing_consent_query = """
                 SELECT
+                    h.key,
                     h.ward_name,
                     h.location_name,
                     h.location_num,
@@ -4095,6 +4097,7 @@ def main():
                 # Query for missing respondent information
                 missing_respondent_query = """
                 SELECT
+                    key,
                     location_name,
                     location_num,
                     dwelling_number AS dwelling_number,
@@ -4262,6 +4265,7 @@ def main():
                 # Query for households with no members recorded
                 no_members_query = """
                 SELECT
+                h.key,
                 h.ward_name,
                 h.location_name,
                 h.location_num,
@@ -4353,6 +4357,7 @@ def main():
                 # Query for households with multiple heads
                 multiple_heads_query = """
                 SELECT
+                h.key,
                 h.ward_name,
                 h.location_name,
                 h.dwelling_number,
@@ -4438,6 +4443,7 @@ def main():
                 # Query for households with no head
                 no_head_query = """
                 SELECT
+                h.key,
                 h.ward_name,
                 h.location_name,
                 h.dwelling_number,
@@ -4507,6 +4513,7 @@ def main():
             try:
                 duplicate_households_query = """
                 SELECT 
+                    h.key,
                     h.ward_name,
                     h.location_name,
                     h.location_num,
@@ -4637,6 +4644,7 @@ def main():
                 # Query for duplicate names in households
                 duplicate_names_query = """
                 SELECT 
+                    h.key,
                     h.location_name,
                     h.location_num,
                     h.dwelling_number,
@@ -4726,6 +4734,7 @@ def main():
                 # Query for individuals with missing sex
                 missing_sex_query = """
                 SELECT
+                    i.key,
                     h.ward_name,
                     h.location_name,
                     h.location_num,
@@ -4826,6 +4835,7 @@ def main():
                 # Query for individuals with missing or invalid age data
                 missing_age_query = """
                 SELECT
+                    i.key,
                     h.ward_name,
                     h.location_name,
                     h.dwelling_number,
@@ -5062,6 +5072,7 @@ def main():
             try:
                 age_checks_query = """
                 SELECT
+                    i.key,
                     h.ward_name,
                     h.location_name,
                     h.dwelling_number,
