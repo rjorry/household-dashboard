@@ -4938,6 +4938,7 @@ def main():
                     -- Individual
                     CONCAT(i.indiv_fname, ' ', i.indiv_lname) AS individual_name,
                     i.indiv_line_num,
+                    i.sex,
                     i.age_category,
 
                     i.age_year,
@@ -5031,6 +5032,15 @@ def main():
                         (i.est_age_days IS NULL)
                     )
                 )
+                AND NOT (
+                    i.indiv_fname IS NULL
+                    AND i.indiv_lname IS NULL
+                    AND i.sex IS NULL
+                    AND i.day_birth IS NULL
+                    AND i.month_birth IS NULL
+                    AND i.year_birth IS NULL
+                    AND i.est_age_days IS NULL
+                )
 
                 ORDER BY
                     h.location_name,
@@ -5098,6 +5108,10 @@ def main():
                             "indiv_line_num": st.column_config.NumberColumn(
                                 "Line Number",
                                 help="Individual line number in household"
+                            ),
+                            "sex": st.column_config.TextColumn(
+                                "Sex",
+                                help="Individual's sex"
                             ),
                             "age_category": st.column_config.TextColumn(
                                 "Age Category",
