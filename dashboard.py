@@ -4784,7 +4784,6 @@ def main():
                 AND h.pro_name = %s
                 AND i.sex IS NULL;
                 """
-
                 # Execute the query
                 missing_sex_df = pd.read_sql(missing_sex_query, engine, params=(selected_site,))
 
@@ -4803,6 +4802,14 @@ def main():
                     st.dataframe(
                         missing_sex_df,
                         column_config={
+                            "key": st.column_config.TextColumn(
+                                "Key",
+                                help="Unique record identifier"
+                            ),
+                            "ward_name": st.column_config.TextColumn(
+                                "Ward Name",
+                                help="Ward name"
+                            ),
                             "location_name": st.column_config.TextColumn(
                                 "Village",
                                 help="Location name"
@@ -4815,6 +4822,10 @@ def main():
                                 "Dwelling Number",
                                 help="Household dwelling number"
                             ),
+                            "consent_respondent_name": st.column_config.TextColumn(
+                                "Respondent Name",
+                                help="Name of the household respondent"
+                            ),
                             "data_collector": st.column_config.TextColumn(
                                 "Data Collector",
                                 help="Name of the data collector"
@@ -4822,10 +4833,6 @@ def main():
                             "interview_datetime": st.column_config.DatetimeColumn(
                                 "Interview Date/Time",
                                 format="DD/MM/YYYY HH:mm"
-                            ),
-                            "individual_id": st.column_config.TextColumn(
-                                "Individual ID",
-                                help="Individual identifier"
                             ),
                             "full_name": st.column_config.TextColumn(
                                 "Full Name",
@@ -4838,6 +4845,14 @@ def main():
                             "sex": st.column_config.TextColumn(
                                 "Sex",
                                 help="Individual's sex (missing)"
+                            ),
+                            "interview_result": st.column_config.TextColumn(
+                                "Interview Result",
+                                help="Result of the interview"
+                            ),
+                            "interview_comments": st.column_config.TextColumn(
+                                "Interview Comments",
+                                help="Comments and observations from the interviewer"
                             )
                         },
                         hide_index=True,
