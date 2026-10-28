@@ -4097,28 +4097,32 @@ def main():
                 # Query for missing respondent information
                 missing_respondent_query = """
                 SELECT
-                    key,
-                    location_name,
-                    location_num,
-                    dwelling_number AS dwelling_number,
-                    four_3_1 AS data_collector,
-                    four_5_1 AS quality_checker,
-                    interview_date_time_1 AS interview_datetime,
-                    four_1_1 AS interview_result,
-                    four_3_2 AS interviewer_comments_observations,
-                    consent_respondent_name,
-                    consent_respondent_relo,
-                    consent_total_hh_members
-                FROM households
+                    h.key,
+                    h.location_name,
+                    h.location_num,
+                    h.dwelling_number AS dwelling_number,
+                    CONCAT(head.indiv_fname, ' ', head.indiv_lname) AS household_head_name,
+                    h.four_3_1 AS data_collector,
+                    h.four_5_1 AS quality_checker,
+                    h.interview_date_time_1 AS interview_datetime,
+                    h.four_1_1 AS interview_result,
+                    h.four_3_2 AS interviewer_comments_observations,
+                    h.consent_respondent_name,
+                    h.consent_respondent_relo,
+                    h.consent_total_hh_members
+                FROM households h
+                LEFT JOIN individuals head
+                    ON h.key = head.parent_key
+                    AND head.relo_to_hh = 1
                 WHERE 
-                    agree_yes = 1
-                    AND pro_name = %s
+                    h.agree_yes = 1
+                    AND h.pro_name = %s
                     AND (
-                        consent_respondent_name IS NULL
-                        OR consent_respondent_relo IS NULL
-                        OR consent_total_hh_members IS NULL
+                        h.consent_respondent_name IS NULL
+                        OR h.consent_respondent_relo IS NULL
+                        OR h.consent_total_hh_members IS NULL
                     )
-                ORDER BY location_name, location_num, four_1_1;
+                ORDER BY h.location_name, h.location_num, h.four_1_1;
                 """
                 
                 # Execute the query
