@@ -4151,6 +4151,34 @@ def main():
                     st.dataframe(
                         missing_respondent_df,
                         column_config={
+                            "key": st.column_config.TextColumn(
+                                "Key",
+                                help="Unique record identifier"
+                            ),
+                            "location_name": st.column_config.TextColumn(
+                                "Village",
+                                help="Location name"
+                            ),
+                            "location_num": st.column_config.NumberColumn(
+                                "Location Number",
+                                help="Location number"
+                            ),
+                            "dwelling_number": st.column_config.NumberColumn(
+                                "Dwelling Number",
+                                help="Household dwelling number"
+                            ),
+                            "household_head_name": st.column_config.TextColumn(
+                                "Household Head Name",
+                                help="Name of the household head"
+                            ),
+                            "data_collector": st.column_config.TextColumn(
+                                "Data Collector",
+                                help="Name of the data collector"
+                            ),
+                            "quality_checker": st.column_config.TextColumn(
+                                "Quality Checker",
+                                help="Name of the quality checker"
+                            ),
                             "interview_datetime": st.column_config.DatetimeColumn(
                                 "Interview Date/Time",
                                 format="DD/MM/YYYY HH:mm"
