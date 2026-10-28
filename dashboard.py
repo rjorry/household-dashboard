@@ -4776,6 +4776,10 @@ def main():
                     h.interview_date_time_1 AS interview_datetime,
                     CONCAT(i.indiv_fname, ' ', i.indiv_lname) AS full_name,
                     i.relo_to_hh AS relationship_to_head,
+                    i.day_birth,
+                    i.month_birth,
+                    i.year_birth,
+                    i.est_age_days AS calculated_age,
                     i.sex,
                     CASE h.four_1_1
                         WHEN 1 THEN 'Completed'
@@ -4852,6 +4856,22 @@ def main():
                             "relationship_to_head": st.column_config.NumberColumn(
                                 "Relationship to Head",
                                 help="Relationship code to household head"
+                            ),
+                            "day_birth": st.column_config.NumberColumn(
+                                "Day of Birth",
+                                help="Day of birth"
+                            ),
+                            "month_birth": st.column_config.NumberColumn(
+                                "Month of Birth",
+                                help="Month of birth"
+                            ),
+                            "year_birth": st.column_config.NumberColumn(
+                                "Year of Birth",
+                                help="Year of birth"
+                            ),
+                            "calculated_age": st.column_config.NumberColumn(
+                                "Calculated Age (Days)",
+                                help="Calculated age in days"
                             ),
                             "sex": st.column_config.TextColumn(
                                 "Sex",
