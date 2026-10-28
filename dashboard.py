@@ -4796,7 +4796,15 @@ def main():
                     ON h.key = i.parent_key
                 WHERE h.agree_yes = 1
                 AND h.pro_name = %s
-                AND i.sex IS NULL;
+                AND i.sex IS NULL
+                AND NOT (
+                    i.indiv_fname IS NULL
+                    AND i.indiv_lname IS NULL
+                    AND i.day_birth IS NULL
+                    AND i.month_birth IS NULL
+                    AND i.year_birth IS NULL
+                    AND i.est_age_days IS NULL
+                );
                 """
 
                 # Execute the query
