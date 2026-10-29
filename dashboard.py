@@ -3846,6 +3846,7 @@ def main():
             WHERE
                 h.agree_yes = 1
                 AND h.pro_name = %s
+                AND h.four_1_1 <> 3
                 AND (
                     -- Missing or Inaccurate Household GPS
                     (h.hh_gps_latitude IS NULL
@@ -4015,6 +4016,7 @@ def main():
                     AND head.relo_to_hh = 1
                 WHERE h.agree_yes = 1
                 AND h.pro_name = %s
+                AND h.four_1_1 <> 3
                 AND (
                     h.consent_consent_pic IS NULL
                     OR h.consent_consent_pic = ''
@@ -4114,9 +4116,10 @@ def main():
                 LEFT JOIN individuals head
                     ON h.key = head.parent_key
                     AND head.relo_to_hh = 1
-                WHERE 
+                WHERE
                     h.agree_yes = 1
                     AND h.pro_name = %s
+                    AND h.four_1_1 <> 3
                     AND (
                         h.consent_respondent_name IS NULL
                         OR h.consent_respondent_relo IS NULL
