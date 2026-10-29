@@ -4009,6 +4009,15 @@ def main():
                     CONCAT(head.indiv_fname, ' ', head.indiv_lname) AS household_head_name,
                     h.four_3_1 AS data_collector,
                     h.interview_date_time_1 AS interview_datetime,
+                    CASE h.four_1_1
+                        WHEN 1 THEN 'Completed'
+                        WHEN 2 THEN 'Partially completed'
+                        WHEN 3 THEN 'Household refused to participate'
+                        WHEN 4 THEN 'Entire household migrated out/absent for extended period'
+                        WHEN 5 THEN 'No competent respondent available at home'
+                        WHEN 6 THEN 'Other (Specify)'
+                        ELSE CAST(h.four_1_1 AS TEXT)
+                    END AS interview_result,
                     h.consent_consent_pic
                 FROM households h
                 LEFT JOIN individuals head
@@ -4067,6 +4076,10 @@ def main():
                             "interview_datetime": st.column_config.DatetimeColumn(
                                 "Interview Date/Time",
                                 format="DD/MM/YYYY HH:mm"
+                            ),
+                            "interview_result": st.column_config.TextColumn(
+                                "Interview Result",
+                                help="Result of the interview"
                             ),
                             "consent_consent_pic": st.column_config.TextColumn(
                                 "Consent Picture",
