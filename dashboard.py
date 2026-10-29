@@ -4316,7 +4316,8 @@ def main():
                 AND head.relo_to_hh = 1
                 WHERE i.key IS NULL
                 AND h.agree_yes = 1
-                AND h.pro_name = %s;
+                AND h.pro_name = %s
+                AND h.four_1_1 <> 3;
                 """
                 
                 # Execute the query
@@ -4405,6 +4406,7 @@ def main():
                 WHERE i.relo_to_hh = 1
                 AND h.agree_yes = 1
                 AND h.pro_name = %s
+                AND h.four_1_1 <> 3
                 GROUP BY h.key, h.ward_name, h.location_name, h.dwelling_number, h.submittername
                 HAVING COUNT(*) > 1;
                 """
@@ -4488,6 +4490,7 @@ def main():
                 LEFT JOIN individuals i ON h.key = i.parent_key AND i.relo_to_hh = 1
                 WHERE h.agree_yes = 1
                 AND h.pro_name = %s
+                AND h.four_1_1 <> 3
                 AND i.key IS NULL;
                 """
                 
@@ -4575,13 +4578,15 @@ def main():
             
                 WHERE h.agree_yes = 1
                 AND h.pro_name = %s
-            
+                AND h.four_1_1 <> 3
+
                 -- Keep only duplicates
                 AND (h.location_name, h.dwelling_number) IN (
                     SELECT location_name, dwelling_number
                     FROM households
                     WHERE agree_yes = 1
                     AND pro_name = %s
+                    AND four_1_1 <> 3
                     GROUP BY location_name, dwelling_number
                     HAVING COUNT(*) > 1
                 )
@@ -4691,7 +4696,8 @@ def main():
                     AND i.relo_to_hh = 1
                 WHERE h.agree_yes = 1
                 AND h.pro_name = %s
-                GROUP BY 
+                AND h.four_1_1 <> 3
+                GROUP BY
                     h.key,
                     h.location_name,
                     h.location_num,
@@ -4799,6 +4805,7 @@ def main():
                     ON h.key = i.parent_key
                 WHERE h.agree_yes = 1
                 AND h.pro_name = %s
+                AND h.four_1_1 <> 3
                 AND i.sex IS NULL
                 AND NOT (
                     i.indiv_fname IS NULL
@@ -5003,6 +5010,7 @@ def main():
 
                 WHERE h.agree_yes = 1
                 AND h.pro_name = %s
+                AND h.four_1_1 <> 3
                 AND (
                     -- Only show problematic records
                     (
@@ -5269,7 +5277,8 @@ def main():
             
                 WHERE h.agree_yes = 1
                 AND h.pro_name = %s
-            
+                AND h.four_1_1 <> 3
+
                 -- Exclude blank names
                 AND TRIM(COALESCE(i.indiv_fname, '')) <> ''
                 AND TRIM(COALESCE(i.indiv_lname, '')) <> ''
