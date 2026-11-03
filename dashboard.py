@@ -3863,6 +3863,7 @@ def main():
                     OR h.water_source_gps_altitude IS NULL
                     OR h.water_source_gps_accuracy > 5
                     OR h.water_source_gps_accuracy IS NULL)
+                    AND h.consent_hhses_three_1_1 NOT IN (12, 13, 14)
 
                     OR
 
