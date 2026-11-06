@@ -5237,8 +5237,21 @@ def main():
                     h.four_3_1 AS data_collector,
                     h.four_5_1 AS data_quality_check_by,
                     h.four_1_1 AS result_of_interview,
+                    h.four_3_2 AS interview_comments,
+
+                    i.day_birth,
+                    i.month_birth,
+                    i.year_birth,
+                    i.est_age_days AS calc_age,
+                    i.est_age_days AS calculated_age,
+                    i.age_category,
+                    i.age_year,
+                    i.age_month,
+                    i.age_days,
+                    i.est_age_years,
+                    i.est_age_month,
                     i.est_age_days,
-            
+
                     CASE
             
                         -- 🚨 Missing DOB
@@ -5427,6 +5440,100 @@ def main():
             
                     st.dataframe(
                         age_checks_df,
+                        column_config={
+                            "key": st.column_config.TextColumn(
+                                "Key",
+                                help="Unique record identifier"
+                            ),
+                            "ward_name": st.column_config.TextColumn(
+                                "Ward Name",
+                                help="Ward name"
+                            ),
+                            "location_name": st.column_config.TextColumn(
+                                "Village",
+                                help="Location name"
+                            ),
+                            "dwelling_number": st.column_config.NumberColumn(
+                                "Dwelling Number",
+                                help="Household dwelling number"
+                            ),
+                            "household_head_name": st.column_config.TextColumn(
+                                "Household Head",
+                                help="Name of the household head"
+                            ),
+                            "individual_name": st.column_config.TextColumn(
+                                "Individual Name",
+                                help="Name of the individual"
+                            ),
+                            "data_collector": st.column_config.TextColumn(
+                                "Data Collector",
+                                help="Name of the data collector"
+                            ),
+                            "data_quality_check_by": st.column_config.TextColumn(
+                                "Quality Check By",
+                                help="Person who performed data quality check"
+                            ),
+                            "result_of_interview": st.column_config.TextColumn(
+                                "Interview Result",
+                                help="Result of the interview"
+                            ),
+                            "interview_comments": st.column_config.TextColumn(
+                                "Interview Comments",
+                                help="Comments and observations from the interviewer"
+                            ),
+                            "day_birth": st.column_config.NumberColumn(
+                                "Day of Birth",
+                                help="Day of birth"
+                            ),
+                            "month_birth": st.column_config.NumberColumn(
+                                "Month of Birth",
+                                help="Month of birth"
+                            ),
+                            "year_birth": st.column_config.NumberColumn(
+                                "Year of Birth",
+                                help="Year of birth"
+                            ),
+                            "calc_age": st.column_config.NumberColumn(
+                                "Calc Age (Days)",
+                                help="Calculated age in days"
+                            ),
+                            "calculated_age": st.column_config.NumberColumn(
+                                "Calculated Age (Days)",
+                                help="Calculated age in days"
+                            ),
+                            "age_category": st.column_config.TextColumn(
+                                "Age Category",
+                                help="Age category selected (years/months/days)"
+                            ),
+                            "age_year": st.column_config.TextColumn(
+                                "Age (Years)",
+                                help="Age in years"
+                            ),
+                            "age_month": st.column_config.TextColumn(
+                                "Age (Months)",
+                                help="Age in months"
+                            ),
+                            "age_days": st.column_config.TextColumn(
+                                "Age (Days)",
+                                help="Age in days"
+                            ),
+                            "est_age_years": st.column_config.TextColumn(
+                                "Est. Age (Years)",
+                                help="Estimated age in years"
+                            ),
+                            "est_age_month": st.column_config.TextColumn(
+                                "Est. Age (Months)",
+                                help="Estimated age in months"
+                            ),
+                            "est_age_days": st.column_config.TextColumn(
+                                "Est. Age (Days)",
+                                help="Estimated age in days"
+                            ),
+                            "issue": st.column_config.TextColumn(
+                                "Issue Description",
+                                help="Description of the age data issue"
+                            )
+                        },
                         hide_index=True,
                         use_container_width=True
                     )
