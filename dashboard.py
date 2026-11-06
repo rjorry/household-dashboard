@@ -4499,7 +4499,17 @@ def main():
                 h.location_name,
                 h.dwelling_number,
                 h.consent_respondent_name,
-                h.submittername AS submitter
+                h.submittername AS submitter,
+                CASE h.four_1_1
+                    WHEN 1 THEN 'Completed'
+                    WHEN 2 THEN 'Partially completed'
+                    WHEN 3 THEN 'Household refused to participate'
+                    WHEN 4 THEN 'Entire household migrated out/absent for extended period'
+                    WHEN 5 THEN 'No competent respondent available at home'
+                    WHEN 6 THEN 'Other (Specify)'
+                    ELSE CAST(h.four_1_1 AS TEXT)
+                END AS interview_result,
+                h.four_3_2 AS interview_comments
                 FROM households h
                 LEFT JOIN individuals i ON h.key = i.parent_key AND i.relo_to_hh = 1
                 WHERE h.agree_yes = 1
@@ -4526,6 +4536,14 @@ def main():
                     st.dataframe(
                         no_head_df,
                         column_config={
+                            "key": st.column_config.TextColumn(
+                                "Key",
+                                help="Unique record identifier"
+                            ),
+                            "ward_name": st.column_config.TextColumn(
+                                "Ward Name",
+                                help="Ward name"
+                            ),
                             "location_name": st.column_config.TextColumn(
                                 "Village",
                                 help="Location name"
@@ -4534,9 +4552,21 @@ def main():
                                 "Dwelling Number",
                                 help="Household dwelling number"
                             ),
+                            "consent_respondent_name": st.column_config.TextColumn(
+                                "Respondent Name",
+                                help="Name of the household respondent"
+                            ),
                             "submitter": st.column_config.TextColumn(
                                 "Submitter",
                                 help="Name of the data submitter"
+                            ),
+                            "interview_result": st.column_config.TextColumn(
+                                "Interview Result",
+                                help="Result of the interview"
+                            ),
+                            "interview_comments": st.column_config.TextColumn(
+                                "Interview Comments",
+                                help="Comments and observations from the interviewer"
                             )
                         },
                         hide_index=True,
