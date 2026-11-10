@@ -3868,12 +3868,18 @@ def main():
                     OR
 
                     -- Missing or Inaccurate Toilet GPS
-                    (h.toilet_gps_latitude IS NULL
-                    OR h.toilet_gps_longitude IS NULL
-                    OR h.toilet_gps_altitude IS NULL
-                    OR h.toilet_gps_accuracy > 5
-                    OR h.toilet_gps_accuracy IS NULL)
-                    AND h.consent_hhses_three_1_9 NOT IN (10, 11)
+                    (
+                        (h.toilet_gps_latitude IS NULL
+                        OR h.toilet_gps_longitude IS NULL
+                        OR h.toilet_gps_altitude IS NULL)
+                        AND h.consent_hhses_three_1_9 NOT IN (9, 10, 11)
+                    )
+                    OR
+                    (
+                        (h.toilet_gps_accuracy > 5
+                        OR h.toilet_gps_accuracy IS NULL)
+                        AND h.consent_hhses_three_1_9 NOT IN (10, 11)
+                    )
                 )
             ORDER BY h.location_name, h.location_num, h.four_1_1;
             """
