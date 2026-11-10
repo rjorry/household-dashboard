@@ -3847,6 +3847,12 @@ def main():
                 h.agree_yes = 1
                 AND h.pro_name = %s
                 AND h.four_1_1 <> 3
+                AND NOT (
+                    h.consent_hhses_three_1_1 = 12
+                    AND h.consent_hhses_three_1_9 = 9
+                    AND h.hh_gps_accuracy IS NOT NULL
+                    AND h.hh_gps_accuracy <= 5
+                )
                 AND (
                     -- Missing or Inaccurate Household GPS
                     (h.hh_gps_latitude IS NULL
